@@ -5,19 +5,34 @@ from datetime import datetime
 import numpy as np
 import requests
 
-from .config import CONFIG, TELEGRAM_API
+from .config import CONFIG
 
 
-def send_telegram(text: str):
-    url = TELEGRAM_API.format(token=os.environ["TELEGRAM_BOT_TOKEN"])
-    payload = {
-        "chat_id": os.environ["TELEGRAM_CHAT_ID"],
-        "text": text,
-        "parse_mode": "Markdown",
-    }
-    r = requests.post(url, json=payload, timeout=10)
-    if not r.ok:
-        print(f"Telegram 送失敗: {r.text}", file=sys.stderr)
+DISCORD_MESSAGE_LIMIT = 2000
+
+
+def _split_discord_message(text: str) -> list[str]:
+    """依 Discord 單則訊息上限分段，優先在換行處切開。"""
+    chunks = []
+    remaining = text
+    while len(remaining) > DISCORD_MESSAGE_LIMIT:
+        split_at = remaining.rfind("\n", 0, DISCORD_MESSAGE_LIMIT + 1)
+        if split_at <= 0:
+            split_at = DISCORD_MESSAGE_LIMIT
+        chunks.append(remaining[:split_at])
+        remaining = remaining[split_at:].lstrip("\n")
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
+def send_discord(text: str):
+    """透過 Discord webhook 發送報告。"""
+    url = os.environ["DISCORD_WEBHOOK_URL"]
+    for chunk in _split_discord_message(text):
+        r = requests.post(url, json={"content": chunk}, timeout=10)
+        if not r.ok:
+            print(f"Discord 發送失敗: {r.status_code} {r.text}", file=sys.stderr)
 
 
 def _trend_emoji(chg: float) -> str:
@@ -148,7 +163,7 @@ def format_messages(
     market: dict = None,
     night_note: str = None,
 ) -> list[str]:
-    """產生多則 Telegram 訊息"""
+    """產生多則 Discord 訊息"""
     buys = [s for s in signals if s.get("action") == "BUY"]
     watches = [s for s in signals if s.get("action") == "WATCH"]
     skips = [s for s in signals if s.get("action") in ("SKIP", "ERROR")]
