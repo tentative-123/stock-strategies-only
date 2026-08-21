@@ -69,7 +69,11 @@ def test_build_report_html_has_stable_sections_and_limits():
     assert "class=\"candle rise\"" in report
     assert "class=\"volume rise\"" in report
     assert "grid-template-columns:1fr 1fr" in report
-    assert "height:460px" in report
+    assert "height:520px" in report
+    assert "股市艾斯DC台股頻道" in report
+    assert "本報告修改自" in report
+    assert "https://github.com/kevin801221/stock-strategies-only" in report
+    assert "V3 DAILY SIGNAL" not in report
     assert "深度分析" in report
     assert "量價解讀" in report
     assert "帶量上攻" in report

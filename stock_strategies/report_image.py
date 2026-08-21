@@ -91,9 +91,9 @@ def _index_chart(history: list[dict]) -> str:
     if len(rows) < 2:
         return '<div class="chart-empty">加權指數 K 線資料不足</div>'
 
-    width, height = 918, 460
+    width, height = 918, 520
     left, right, top = 58, 18, 12
-    price_bottom, volume_top, volume_bottom = 315, 355, 430
+    price_bottom, volume_top, volume_bottom = 355, 400, 490
     plot_width = width - left - right
     values = [float(row[key]) for row in rows for key in ("high", "low")]
     for row in rows:
@@ -196,7 +196,7 @@ def build_report_html(
 *{{box-sizing:border-box}}html,body{{margin:0;width:{REPORT_WIDTH}px;height:{REPORT_HEIGHT}px}}
 body{{font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;background:#eef2f7;color:#182234}}
 .page{{width:100%;height:100%;padding:54px 58px;background:#f7f9fc;overflow:hidden}}
-.header{{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px}}
+.header{{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px}}.header-meta{{text-align:right}}.community{{font-size:17px;font-weight:900;color:#e45d37;margin-bottom:7px;letter-spacing:.5px}}
 .eyebrow{{color:#59708f;font-weight:800;font-size:18px;letter-spacing:3px;margin-bottom:8px}}
 h1{{font-size:42px;line-height:1.1;margin:0;color:#10213a}}.date{{font-size:22px;font-weight:700;color:#64748b}}
 .hero{{display:flex;justify-content:space-between;align-items:center;padding:24px 28px;border-radius:22px;background:#fff;border-left:9px solid #335cff;box-shadow:0 10px 30px #263b5b12;margin-bottom:20px}}
@@ -211,16 +211,16 @@ h1{{font-size:42px;line-height:1.1;margin:0;color:#10213a}}.date{{font-size:22px
 .metrics{{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 6px}}.metrics span{{background:#eef3f8;border-radius:8px;padding:4px 6px;font-size:12px;color:#5d6b80}}.metrics b{{color:#25364f}}.trigger{{font-size:13px;color:#3c4e67;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.analysis{{display:grid;grid-template-columns:58px 1fr;gap:6px;margin-top:6px;padding-top:6px;border-top:1px dashed #e1e7ef;font-size:12px;line-height:1.35;color:#53637a}}.analysis b{{color:#25364f}}.analysis span{{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}.volume-reading b{{color:#9a6700}}.stock-note{{font-size:12px;color:#b45309;margin-top:5px}}
 .panel.dense .stock-card{{padding:8px 11px;margin-top:6px}}.panel.dense .stock-head div b{{font-size:18px}}.panel.dense .stock-head div span{{font-size:15px}}.panel.dense .stock-head>strong{{font-size:20px}}.panel.dense .metrics{{flex-wrap:nowrap;gap:3px;margin:5px 0}}.panel.dense .metrics span{{font-size:10px;padding:3px}}.panel.dense .trigger{{font-size:11px}}.panel.dense .analysis{{grid-template-columns:50px 1fr;margin-top:4px;padding-top:4px;font-size:10px}}.panel.dense .analysis span{{-webkit-line-clamp:1}}
 .empty-line{{padding:18px;border-radius:13px;background:#f6f8fb;color:#7a8798;font-size:16px;text-align:center}}
-.footer{{display:flex;justify-content:space-between;align-items:center;margin-top:18px;padding:0 4px;color:#778397;font-size:13px}}.brand{{font-weight:900;letter-spacing:1px;color:#335cff}}
-.chart-panel{{background:#fff;border:1px solid #e4eaf2;border-radius:20px;padding:18px 22px 12px;margin-bottom:22px;box-shadow:0 8px 24px #263b5b0b}}.chart-head{{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}}.chart-head h3{{font-size:23px;margin:0}}.legend{{display:flex;gap:14px;color:#65748a;font-size:13px;font-weight:700}}.legend i{{width:16px;height:3px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:middle}}.chart-panel svg{{display:block;width:100%;height:460px}}.grid{{stroke:#e8edf4;stroke-width:1}}.axis{{font-size:11px;fill:#8190a5}}.wick{{stroke-width:1.4}}.candle.rise,.volume.rise{{fill:#e45151}}.wick.rise{{stroke:#e45151}}.candle.fall,.volume.fall{{fill:#15966a}}.wick.fall{{stroke:#15966a}}.volume{{opacity:.42}}.chart-empty{{height:310px;display:flex;align-items:center;justify-content:center;color:#8290a3;background:#f7f9fc;border-radius:14px}}
+.footer{{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:18px;padding:0 4px;color:#778397;font-size:12px}}.attribution{{font-size:10px;text-align:right;color:#7c899b;white-space:nowrap}}.attribution a{{color:#536a88;text-decoration:underline;font-weight:700}}
+.chart-panel{{background:#fff;border:1px solid #e4eaf2;border-radius:20px;padding:18px 22px 12px;margin-bottom:22px;box-shadow:0 8px 24px #263b5b0b}}.chart-head{{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}}.chart-head h3{{font-size:23px;margin:0}}.legend{{display:flex;gap:14px;color:#65748a;font-size:13px;font-weight:700}}.legend i{{width:16px;height:3px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:middle}}.chart-panel svg{{display:block;width:100%;height:520px}}.grid{{stroke:#e8edf4;stroke-width:1}}.axis{{font-size:11px;fill:#8190a5}}.wick{{stroke-width:1.4}}.candle.rise,.volume.rise{{fill:#e45151}}.wick.rise{{stroke:#e45151}}.candle.fall,.volume.fall{{fill:#15966a}}.wick.fall{{stroke:#15966a}}.volume{{opacity:.42}}.chart-empty{{height:370px;display:flex;align-items:center;justify-content:center;color:#8290a3;background:#f7f9fc;border-radius:14px}}
 </style></head><body><main class="page">
-  <header class="header"><div><div class="eyebrow">TAIWAN STOCK SIGNAL</div><h1>0050追蹤選股日報</h1></div><div class="date">{report_date:%Y / %m / %d}</div></header>
+  <header class="header"><div><div class="eyebrow">TAIWAN STOCK SIGNAL</div><h1>0050追蹤選股日報</h1></div><div class="header-meta"><div class="community">股市艾斯DC台股頻道</div><div class="date">{report_date:%Y / %m / %d}</div></div></header>
   <section class="hero"><div><h2>{conclusion}</h2><p>{_escape(guidance)}</p></div><div class="counts"><span class="pill buy">BUY {len([s for s in signals if s.get('action') == 'BUY'])}</span><span class="pill watch">WATCH {len([s for s in signals if s.get('action') == 'WATCH'])}</span><span class="pill skip">SKIP {len(skips)}</span></div></section>
   <section class="overview"><div class="info {tone}"><label>大盤判讀</label><b>{_escape((market or {}).get('note') or guidance)}</b></div><div class="info"><label>夜盤訊號</label><b>{_escape(night_note or '暫無夜盤資料')}</b></div><div class="info"><label>掃描範圍</label><b>{len(signals)} 檔股票<br>{len(watchlist)} 檔觀察池</b></div></section>
   <section class="chart-panel"><div class="chart-head"><h3>加權指數｜日 K 趨勢</h3><div class="legend"><span><i style="background:#8b5cf6"></i>MA5</span><span><i style="background:#2f6fed"></i>MA10</span><span><i style="background:#e49b0f"></i>MA20</span><span><i style="background:#64748b"></i>MA60</span><span>成交量</span></div></div>{_index_chart((market or {}).get('history', []))}</section>
   <section class="content"><div><div class="panel{' dense' if len(buys) > 3 else ''}"><div class="section-title"><h3>🟢 今日預計強勢股</h3><span>TOP 5</span></div>{buy_cards}</div></div>
   <div><div class="panel"><div class="section-title"><h3>🟡 今日可關注股</h3><span>TOP 3</span></div>{watch_cards}</div></div></section>
-  <footer class="footer"><span>系統自動分析，僅供參考，投資決策請自行判斷</span><span class="brand">V3 DAILY SIGNAL</span></footer>
+  <footer class="footer"><span>系統自動分析，僅供參考，投資決策請自行判斷</span><span class="attribution">本報告修改自 <a href="https://github.com/kevin801221/stock-strategies-only">kevin801221/stock-strategies-only</a> 專案，感謝分享</span></footer>
 </main></body></html>"""
 
 
