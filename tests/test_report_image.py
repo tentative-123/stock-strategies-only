@@ -69,6 +69,9 @@ def test_build_report_html_has_stable_sections_and_limits():
     assert "class=\"candle rise\"" in report
     assert "class=\"volume rise\"" in report
     assert "grid-template-columns:1fr 1fr" in report
+    assert 'class="panel count-5"' in report
+    assert 'class="panel count-3"' in report
+    assert ".panel.count-5 .stock-card" in report
     assert "height:520px" in report
     assert "股市艾斯DC台股頻道" in report
     assert "本報告修改自" in report
