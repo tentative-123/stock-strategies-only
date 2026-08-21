@@ -12,6 +12,7 @@ V3.2 每日選股訊號系統
 
 import os
 import sys
+import tempfile
 import time
 from datetime import datetime
 
@@ -28,7 +29,8 @@ from stock_strategies.sheet import (
     write_performance,
 )
 from stock_strategies.evaluate import evaluate
-from stock_strategies.notify import send_discord, format_messages
+from stock_strategies.notify import send_discord, send_discord_image, format_messages
+from stock_strategies.report_image import build_report_html, render_report_png
 from stock_strategies.market import get_market_state, apply_market_filter
 from stock_strategies.night_session import (
     get_night_session,
@@ -129,6 +131,21 @@ def main():
     # 8. 若有累積的成績單，額外推一則摘要
     if stats and stats["count"] >= 5:
         send_discord(_format_perf_message(stats))
+
+    # 9. 文字推播全部完成後，另外附上一頁式圖片報告。
+    try:
+        print("產生每日報告圖...")
+        report_html = build_report_html(
+            results, watchlist, market=market, night_note=night_note
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = render_report_png(
+                report_html, os.path.join(temp_dir, "daily-report.png")
+            )
+            send_discord_image(str(image_path))
+    except Exception as e:
+        # 圖片產生失敗不影響原有文字報告與選股流程。
+        print(f"⚠️ 每日報告圖產生失敗: {e}", file=sys.stderr)
 
     print("✅ 完成")
 

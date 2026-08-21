@@ -5,6 +5,7 @@ from stock_strategies.notify import (
     format_messages,
     format_premarket,
     send_discord,
+    send_discord_image,
 )
 
 
@@ -33,6 +34,23 @@ def test_send_discord_splits_messages_at_discord_limit(monkeypatch, mocker):
     chunks = [call.kwargs["json"]["content"] for call in post.call_args_list]
     assert chunks == ["a" * DISCORD_MESSAGE_LIMIT, "b" * 10]
     assert all(len(chunk) <= DISCORD_MESSAGE_LIMIT for chunk in chunks)
+
+
+def test_send_discord_image_uploads_png(tmp_path, monkeypatch, mocker):
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.test/webhook")
+    image_path = tmp_path / "report.png"
+    image_path.write_bytes(b"png")
+    post = mocker.patch("stock_strategies.notify.requests.post")
+    post.return_value = Mock(ok=True)
+
+    send_discord_image(str(image_path))
+
+    call = post.call_args
+    assert call.args[0] == "https://discord.test/webhook"
+    assert call.kwargs["data"] == {"content": "🖼️ 每日選股一頁報"}
+    assert call.kwargs["files"]["file"][0] == "daily-report.png"
+    assert call.kwargs["files"]["file"][2] == "image/png"
+    assert call.kwargs["timeout"] == 30
 
 
 def _signal(stock_id: str, action: str) -> dict:
