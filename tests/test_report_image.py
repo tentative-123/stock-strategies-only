@@ -16,8 +16,16 @@ def _signal(stock_id: str, action: str) -> dict:
             "tech_score": 65,
             "backtest_winrate": 0.61,
             "tech_signals": ["MACD多頭"],
+            "volume_patterns": ["梯量柱"],
+            "volume_verdict": "量能階梯推升，走勢健康",
         },
-        "trend": {"chg_5d": 2.1, "chg_20d": 4.2, "above_ma20": True},
+        "trend": {
+            "chg_5d": 2.1,
+            "chg_20d": 4.2,
+            "vol_ratio": 1.3,
+            "above_ma20": True,
+            "above_ma60": True,
+        },
     }
 
 
@@ -52,7 +60,7 @@ def test_build_report_html_has_stable_sections_and_limits():
         report_date=datetime(2026, 8, 21),
     )
 
-    assert "每日選股一頁報" in report
+    assert "0050追蹤選股日報" in report
     assert "今日預計強勢股" in report
     assert "今日可關注股" in report
     assert "族群動能" not in report
@@ -61,7 +69,11 @@ def test_build_report_html_has_stable_sections_and_limits():
     assert "class=\"candle rise\"" in report
     assert "class=\"volume rise\"" in report
     assert "grid-template-columns:1fr 1fr" in report
-    assert "height:360px" in report
+    assert "height:460px" in report
+    assert "深度分析" in report
+    assert "量價解讀" in report
+    assert "帶量上攻" in report
+    assert "梯量柱｜量能階梯推升，走勢健康" in report
     assert "2026 / 08 / 21" in report
     assert "B4" in report and "B5" not in report
     assert "W2" in report and "W3" not in report

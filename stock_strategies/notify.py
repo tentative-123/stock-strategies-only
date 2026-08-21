@@ -40,7 +40,7 @@ def send_discord_image(image_path: str, filename: str = "daily-report.png"):
     with open(image_path, "rb") as image_file:
         r = requests.post(
             os.environ["DISCORD_WEBHOOK_URL"],
-            data={"content": "🖼️ 每日選股一頁報"},
+            data={"content": "🖼️ 0050追蹤選股日報"},
             files={"file": (filename, image_file, "image/png")},
             timeout=30,
         )

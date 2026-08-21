@@ -47,7 +47,7 @@ def test_send_discord_image_uploads_png(tmp_path, monkeypatch, mocker):
 
     call = post.call_args
     assert call.args[0] == "https://discord.test/webhook"
-    assert call.kwargs["data"] == {"content": "🖼️ 每日選股一頁報"}
+    assert call.kwargs["data"] == {"content": "🖼️ 0050追蹤選股日報"}
     assert call.kwargs["files"]["file"][0] == "daily-report.png"
     assert call.kwargs["files"]["file"][2] == "image/png"
     assert call.kwargs["timeout"] == 30
