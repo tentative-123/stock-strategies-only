@@ -28,7 +28,7 @@ from stock_strategies.sheet import (
     write_performance,
 )
 from stock_strategies.evaluate import evaluate
-from stock_strategies.notify import send_telegram, format_messages
+from stock_strategies.notify import send_discord, format_messages
 from stock_strategies.market import get_market_state, apply_market_filter
 from stock_strategies.night_session import (
     get_night_session,
@@ -40,8 +40,7 @@ from stock_strategies.performance import update_performance, summary as perf_sum
 
 REQUIRED_ENV = [
     "FINMIND_TOKEN",
-    "TELEGRAM_BOT_TOKEN",
-    "TELEGRAM_CHAT_ID",
+    "DISCORD_WEBHOOK_URL",
     "GOOGLE_SHEET_ID",
     "GOOGLE_CREDS_JSON",
 ]
@@ -121,15 +120,15 @@ def main():
         print(f"⚠️ Performance 追蹤失敗: {e}", file=sys.stderr)
         stats = None
 
-    # 7. 發送 Telegram
-    print("發送 Telegram...")
+    # 7. 發送 Discord
+    print("發送 Discord...")
     for msg in format_messages(results, watchlist, market=market, night_note=night_note):
-        send_telegram(msg)
+        send_discord(msg)
         time.sleep(0.5)
 
     # 8. 若有累積的成績單，額外推一則摘要
     if stats and stats["count"] >= 5:
-        send_telegram(_format_perf_message(stats))
+        send_discord(_format_perf_message(stats))
 
     print("✅ 完成")
 
