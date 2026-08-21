@@ -13,7 +13,7 @@ import numpy as np
 
 
 REPORT_WIDTH = 1080
-REPORT_HEIGHT = 1350
+REPORT_HEIGHT = 1800
 
 
 def _escape(value: object) -> str:
@@ -89,6 +89,90 @@ def _sector_rows(signals: list[dict], watchlist: list[dict]) -> str:
     )
 
 
+def _index_chart(history: list[dict]) -> str:
+    """將近 60 日加權指數資料畫成無 JavaScript 的 SVG K 線圖。"""
+    rows = [
+        row
+        for row in history[-60:]
+        if all(row.get(key) is not None for key in ("open", "high", "low", "close"))
+    ]
+    if len(rows) < 2:
+        return '<div class="chart-empty">加權指數 K 線資料不足</div>'
+
+    width, height = 918, 280
+    left, right, top = 58, 18, 12
+    price_bottom, volume_top, volume_bottom = 188, 208, 258
+    plot_width = width - left - right
+    values = [float(row[key]) for row in rows for key in ("high", "low")]
+    for row in rows:
+        values.extend(
+            float(row[key])
+            for key in ("ma5", "ma10", "ma20", "ma60")
+            if row.get(key) is not None
+        )
+    price_min, price_max = min(values), max(values)
+    padding = max((price_max - price_min) * 0.06, 1)
+    price_min -= padding
+    price_max += padding
+    max_volume = max(float(row.get("volume") or 0) for row in rows) or 1
+    step = plot_width / len(rows)
+
+    def x_at(index: int) -> float:
+        return left + step * (index + 0.5)
+
+    def y_at(value: float) -> float:
+        ratio = (float(value) - price_min) / (price_max - price_min)
+        return price_bottom - ratio * (price_bottom - top)
+
+    parts = [f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="加權指數日 K 線圖">']
+    for index in range(4):
+        y = top + (price_bottom - top) * index / 3
+        price = price_max - (price_max - price_min) * index / 3
+        parts.append(
+            f'<line x1="{left}" y1="{y:.1f}" x2="{width-right}" y2="{y:.1f}" class="grid"/>'
+            f'<text x="{left-8}" y="{y+4:.1f}" text-anchor="end" class="axis">{price:,.0f}</text>'
+        )
+    parts.append(
+        f'<line x1="{left}" y1="{volume_bottom}" x2="{width-right}" y2="{volume_bottom}" class="grid"/>'
+    )
+
+    candle_width = max(3.0, min(8.0, step * 0.58))
+    for index, row in enumerate(rows):
+        x = x_at(index)
+        open_price, close = float(row["open"]), float(row["close"])
+        high, low = float(row["high"]), float(row["low"])
+        css_class = "rise" if close >= open_price else "fall"
+        body_top = min(y_at(open_price), y_at(close))
+        body_height = max(abs(y_at(open_price) - y_at(close)), 1.5)
+        volume_height = float(row.get("volume") or 0) / max_volume * (volume_bottom - volume_top)
+        parts.append(
+            f'<line x1="{x:.1f}" y1="{y_at(high):.1f}" x2="{x:.1f}" y2="{y_at(low):.1f}" class="wick {css_class}"/>'
+            f'<rect x="{x-candle_width/2:.1f}" y="{body_top:.1f}" width="{candle_width:.1f}" height="{body_height:.1f}" class="candle {css_class}"/>'
+            f'<rect x="{x-candle_width/2:.1f}" y="{volume_bottom-volume_height:.1f}" width="{candle_width:.1f}" height="{volume_height:.1f}" class="volume {css_class}"/>'
+        )
+
+    ma_colors = {5: "#8b5cf6", 10: "#2f6fed", 20: "#e49b0f", 60: "#64748b"}
+    for period, color in ma_colors.items():
+        points = [
+            f"{x_at(index):.1f},{y_at(row[f'ma{period}']):.1f}"
+            for index, row in enumerate(rows)
+            if row.get(f"ma{period}") is not None
+        ]
+        if len(points) > 1:
+            parts.append(
+                f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>'
+            )
+
+    tick_indexes = sorted({0, len(rows) // 3, len(rows) * 2 // 3, len(rows) - 1})
+    for index in tick_indexes:
+        date = str(rows[index].get("date", ""))[5:].replace("-", "/")
+        parts.append(
+            f'<text x="{x_at(index):.1f}" y="{height-5}" text-anchor="middle" class="axis">{_escape(date)}</text>'
+        )
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 def build_report_html(
     signals: list[dict],
     watchlist: list[dict] | None = None,
@@ -136,10 +220,12 @@ h1{{font-size:42px;line-height:1.1;margin:0;color:#10213a}}.date{{font-size:22px
 .empty-line{{padding:18px;border-radius:13px;background:#f6f8fb;color:#7a8798;font-size:16px;text-align:center}}
 .sector{{margin-top:18px}}.sector-row{{display:grid;grid-template-columns:1fr 52px 65px;align-items:center;border-top:1px solid #edf0f4;padding:10px 2px;font-size:15px}}.sector-row span{{color:#8a96a8}}.sector-row strong{{text-align:right}}.up{{color:#07824e}}.down{{color:#d04444}}
 .footer{{display:flex;justify-content:space-between;align-items:center;margin-top:18px;padding:0 4px;color:#778397;font-size:13px}}.brand{{font-weight:900;letter-spacing:1px;color:#335cff}}
+.chart-panel{{background:#fff;border:1px solid #e4eaf2;border-radius:20px;padding:18px 22px 12px;margin-bottom:22px;box-shadow:0 8px 24px #263b5b0b}}.chart-head{{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}}.chart-head h3{{font-size:23px;margin:0}}.legend{{display:flex;gap:14px;color:#65748a;font-size:13px;font-weight:700}}.legend i{{width:16px;height:3px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:middle}}.chart-panel svg{{display:block;width:100%;height:280px}}.grid{{stroke:#e8edf4;stroke-width:1}}.axis{{font-size:11px;fill:#8190a5}}.wick{{stroke-width:1.4}}.candle.rise,.volume.rise{{fill:#e45151}}.wick.rise{{stroke:#e45151}}.candle.fall,.volume.fall{{fill:#15966a}}.wick.fall{{stroke:#15966a}}.volume{{opacity:.42}}.chart-empty{{height:150px;display:flex;align-items:center;justify-content:center;color:#8290a3;background:#f7f9fc;border-radius:14px}}
 </style></head><body><main class="page">
   <header class="header"><div><div class="eyebrow">TAIWAN STOCK SIGNAL</div><h1>每日選股一頁報</h1></div><div class="date">{report_date:%Y / %m / %d}</div></header>
   <section class="hero"><div><h2>{conclusion}</h2><p>{_escape(guidance)}</p></div><div class="counts"><span class="pill buy">BUY {len([s for s in signals if s.get('action') == 'BUY'])}</span><span class="pill watch">WATCH {len([s for s in signals if s.get('action') == 'WATCH'])}</span><span class="pill skip">SKIP {len(skips)}</span></div></section>
   <section class="overview"><div class="info {tone}"><label>大盤判讀</label><b>{_escape((market or {}).get('note') or guidance)}</b></div><div class="info"><label>夜盤訊號</label><b>{_escape(night_note or '暫無夜盤資料')}</b></div><div class="info"><label>掃描範圍</label><b>{len(signals)} 檔股票<br>{len(watchlist)} 檔觀察池</b></div></section>
+  <section class="chart-panel"><div class="chart-head"><h3>加權指數｜日 K 趨勢</h3><div class="legend"><span><i style="background:#8b5cf6"></i>MA5</span><span><i style="background:#2f6fed"></i>MA10</span><span><i style="background:#e49b0f"></i>MA20</span><span><i style="background:#64748b"></i>MA60</span><span>成交量</span></div></div>{_index_chart((market or {}).get('history', []))}</section>
   <section class="content"><div><div class="panel"><div class="section-title"><h3>🟢 今日預計強勢股</h3><span>TOP 5</span></div>{buy_cards}</div></div>
   <div><div class="panel"><div class="section-title"><h3>🟡 今日可關注股</h3><span>TOP 3</span></div>{watch_cards}<div class="sector"><div class="section-title"><h3>族群動能</h3><span>5日均值</span></div>{_sector_rows(signals, watchlist)}</div></div></div></section>
   <footer class="footer"><span>系統自動分析，僅供參考，投資決策請自行判斷</span><span class="brand">V3 DAILY SIGNAL</span></footer>

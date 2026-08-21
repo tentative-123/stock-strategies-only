@@ -29,10 +29,25 @@ def test_build_report_html_has_stable_sections_and_limits():
         for stock in buys + watches
     ]
 
+    history = [
+        {
+            "date": f"2026-07-{index + 1:02d}",
+            "open": 22000 + index,
+            "high": 22100 + index,
+            "low": 21900 + index,
+            "close": 22050 + index,
+            "volume": 100000 + index * 100,
+            "ma5": 22040 + index,
+            "ma10": 22030 + index,
+            "ma20": 22020 + index,
+            "ma60": 22010 + index,
+        }
+        for index in range(30)
+    ]
     report = build_report_html(
         buys + watches,
         watchlist,
-        market={"note": "大盤站上月線"},
+        market={"note": "大盤站上月線", "history": history},
         night_note="夜盤中性",
         report_date=datetime(2026, 8, 21),
     )
@@ -41,6 +56,10 @@ def test_build_report_html_has_stable_sections_and_limits():
     assert "今日預計強勢股" in report
     assert "今日可關注股" in report
     assert "族群動能" in report
+    assert "加權指數｜日 K 趨勢" in report
+    assert "MA5" in report and "MA10" in report and "MA20" in report and "MA60" in report
+    assert "class=\"candle rise\"" in report
+    assert "class=\"volume rise\"" in report
     assert "2026 / 08 / 21" in report
     assert "B4" in report and "B5" not in report
     assert "W2" in report and "W3" not in report
