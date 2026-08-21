@@ -35,6 +35,19 @@ def send_discord(text: str):
             print(f"Discord 發送失敗: {r.status_code} {r.text}", file=sys.stderr)
 
 
+def send_discord_image(image_path: str, filename: str = "daily-report.png"):
+    """透過同一個 Discord webhook 上傳每日報告圖。"""
+    with open(image_path, "rb") as image_file:
+        r = requests.post(
+            os.environ["DISCORD_WEBHOOK_URL"],
+            data={"content": "🖼️ 0050追蹤選股日報"},
+            files={"file": (filename, image_file, "image/png")},
+            timeout=30,
+        )
+    if not r.ok:
+        print(f"Discord 報告圖發送失敗: {r.status_code} {r.text}", file=sys.stderr)
+
+
 def _trend_emoji(chg: float) -> str:
     if chg > 3:
         return "🔥"
@@ -68,13 +81,6 @@ def _format_stock_detail(s: dict, show_trend: bool = True) -> list[str]:
             f"距高點{t.get('pct_from_high', 0):.0f}% | {ma_status} | {vol_note}"
         )
     lines.append(
-        f"📌 *明日開盤進場* | 參考價 {s['entry_price']}"
-    )
-    lines.append(
-        f"停損 {s['stop_loss_price']} (-{CONFIG['stop_loss']*100:.0f}%) / "
-        f"目標 {s['target_price']} (+{CONFIG['target_return']*100:.0f}%)"
-    )
-    lines.append(
         f"風報比 1:{s['risk_reward_ratio']} | 建議部位 {s['position_size_pct']}%"
     )
     lines.append(
@@ -82,8 +88,13 @@ def _format_stock_detail(s: dict, show_trend: bool = True) -> list[str]:
     )
     if c.get("tech_signals"):
         lines.append(f"觸發: {', '.join(c['tech_signals'])}")
-    if s.get("risk_notes"):
-        lines.append(f"⚠️ {' / '.join(s['risk_notes'])}")
+    risk_notes = [
+        note
+        for note in s.get("risk_notes", [])
+        if not (note.startswith("歷史勝率") and "低於五成" in note)
+    ]
+    if risk_notes:
+        lines.append(f"⚠️ {' / '.join(risk_notes)}")
     return lines
 
 
@@ -214,36 +225,27 @@ def format_messages(
     )
     messages.append("\n".join(msg1))
 
-    # === 第二則：BUY 詳細 ===
+    # === 第二則：強勢股 + 可關注股 ===
     msg2 = []
     if buys:
-        msg2.append(f"🟢 *BUY — 建議進場 ({len(buys)})*")
+        top_buys = buys[:5]
+        msg2.append(f"🟢 *今日預計強勢股 ({len(top_buys)})*")
         msg2.append("")
-        for s in buys:
+        for s in top_buys:
             msg2.extend(_format_stock_detail(s))
-            msg2.append(f"💡 為何買: {_explain_why(s)}")
             msg2.append("")
     else:
-        msg2.append("🟢 *BUY: 今日無符合全部條件的標的*")
+        msg2.append("🟢 *今日預計強勢股：今日無符合全部條件的標的*")
         msg2.append("（需基本面+技術面+回測三關全過）")
         msg2.append("")
 
     if watches:
-        top_watches = watches[:8]
-        rest_watches = watches[8:]
-        msg2.append(f"🟡 *WATCH — 接近訊號 TOP {len(top_watches)}*")
+        top_watches = watches[:3]
+        msg2.append(f"🟡 *今日可關注股 ({len(top_watches)})*")
         msg2.append("")
         for s in top_watches:
             msg2.extend(_format_stock_detail(s))
             msg2.append(f"❓ 差在: {_explain_why(s)}")
-            msg2.append("")
-
-        if rest_watches:
-            msg2.append(f"📎 *其他觀察 ({len(rest_watches)})*")
-            rest_line = ", ".join(
-                [f"{s['stock_id']}{s['name']}({s['signal_score']})" for s in rest_watches]
-            )
-            msg2.append(rest_line)
             msg2.append("")
     messages.append("\n".join(msg2))
 
@@ -272,10 +274,6 @@ def format_messages(
                 f"• *{s['stock_id']} {s['name']}* ({s['action']}, {s['signal_score']}分)"
             )
             msg3.append(f"  {reason}")
-            msg3.append(
-                f"  明日開盤進場（參考 {s['entry_price']}）→ "
-                f"損 {s['stop_loss_price']} / 標 {s['target_price']}"
-            )
             msg3.append("")
 
     msg3.append("📌 *操作方向*")
@@ -421,13 +419,20 @@ def format_premarket(night: dict | None, signals: list[dict]) -> str:
         buys = [s for s in batch if str(s["action"]).upper() == "BUY"]
         watches = [s for s in batch if str(s["action"]).upper() == "WATCH"]
         lines.append(f"📋 *昨日訊號 × 夜盤對照* ({latest_day})")
-        for s in (buys + watches)[:12]:
-            act = str(s["action"]).upper()
-            dot = "🟢" if act == "BUY" else "🟡"
-            lines.append(
-                f"{dot} {act} {s.get('stock_id', '')} {s.get('name', '')} "
-                f"{s.get('signal_score', '')}分 · {tag}"
-            )
+        if buys:
+            lines.append("🟢 *今日預計強勢股*")
+            for s in buys[:5]:
+                lines.append(
+                    f"• {s.get('stock_id', '')} {s.get('name', '')} "
+                    f"{s.get('signal_score', '')}分 · {tag}"
+                )
+        if watches:
+            lines.append("🟡 *今日可關注股*")
+            for s in watches[:3]:
+                lines.append(
+                    f"• {s.get('stock_id', '')} {s.get('name', '')} "
+                    f"{s.get('signal_score', '')}分 · {tag}"
+                )
         lines.append(f"↳ _{bias_guidance(bias)}_")
     else:
         lines.append("📋 昨日無 BUY/WATCH 訊號（或尚未跑過選股）")
