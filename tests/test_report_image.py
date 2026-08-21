@@ -55,11 +55,13 @@ def test_build_report_html_has_stable_sections_and_limits():
     assert "每日選股一頁報" in report
     assert "今日預計強勢股" in report
     assert "今日可關注股" in report
-    assert "族群動能" in report
+    assert "族群動能" not in report
     assert "加權指數｜日 K 趨勢" in report
     assert "MA5" in report and "MA10" in report and "MA20" in report and "MA60" in report
     assert "class=\"candle rise\"" in report
     assert "class=\"volume rise\"" in report
+    assert "grid-template-columns:1fr 1fr" in report
+    assert "height:360px" in report
     assert "2026 / 08 / 21" in report
     assert "B4" in report and "B5" not in report
     assert "W2" in report and "W3" not in report
