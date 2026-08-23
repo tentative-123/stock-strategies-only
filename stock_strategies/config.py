@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
-TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 # ── 快取（parquet）──
 FINMIND_CACHE_DIR = os.environ.get(

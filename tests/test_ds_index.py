@@ -7,6 +7,7 @@ def test_index_fallback_taiex_to_twii(monkeypatch):
         "date": pd.to_datetime(["2024-01-02", "2024-01-03"]),
         "open": [17000, 17100], "max": [17050, 17150],
         "min": [16950, 17050], "close": [17020, 17120],
+        "Trading_Volume": [100000, 120000],
     })
 
     def fake_fetch(dataset, data_id, start, *a, **k):
@@ -21,3 +22,4 @@ def test_index_fallback_taiex_to_twii(monkeypatch):
     assert {"date", "open", "high", "low", "close"}.issubset(out.columns)
     assert len(out) == 2
     assert out.iloc[1]["high"] == 17150   # max→high 正規化
+    assert out.iloc[1]["volume"] == 120000

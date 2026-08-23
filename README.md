@@ -18,31 +18,31 @@
 ---
 
 > **基本面 × 技術面 × 歷史回測** — 全自動掃描、評分、推播  
-> 每天收盤後自動跑，Telegram 收通知，Google Sheet 存紀錄  
+> 每天收盤後自動跑，Discord 收通知，Google Sheet 存紀錄
 > 零伺服器成本，GitHub Actions 免費跑
 
 [![GitHub Actions](https://img.shields.io/badge/自動排程-GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](#-github-actions-自動排程)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](#)
-[![Telegram](https://img.shields.io/badge/通知-Telegram_Bot-26A5E4?logo=telegram&logoColor=white)](#-telegram-通知範例)
+[![Discord](https://img.shields.io/badge/通知-Discord_Webhook-5865F2?logo=discord&logoColor=white)](#-discord-通知範例)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
-## ⚡ 最快啟用：每天自動推 Telegram
+## ⚡ 最快啟用：每天自動推 Discord
 
 這個 repo 已內建 GitHub Actions。Fork 後不用租伺服器，只要設定 secrets，就能每天自動跑。
 
-1. 到 fork 後的 repo → **Settings** → **Secrets and variables** → **Actions** → **Secrets**，新增：
+1. 到 fork 後的 repo → **Settings** → **Secrets and variables** → **Actions** → **Secrets**，新增四個必填 Secret，並可選擇加上圖片專用 Secret：
    - `FINMIND_TOKEN`
-   - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
+   - `DISCORD_WEBHOOK_URL`
    - `GOOGLE_SHEET_ID`
    - `GOOGLE_CREDS_JSON`
-2. 到 **Actions** → **Telegram Smoke Test** → **Run workflow**。
-3. Telegram 收到測試訊息後，再跑 **V3 Daily Signal**。
+   - `DISCORD_REPORT_WEBHOOK_URL`（選填；將 PNG 日報額外發到另一個頻道）
+2. 到 **Actions** → **Discord Webhook Smoke Test** → **Run workflow**。
+3. Discord 收到測試訊息後，再跑 **V3 Daily Signal**。
 4. 測試成功後，每個交易日台灣時間 **14:30** 自動選股推播；**08:00** 會推夜盤盤前快報。
 
-如果 Telegram 沒收到，先看 [Step 7：GitHub Actions 自動排程](#step-7github-actions-自動排程) 的錯誤對照表。注意：這五個值都要放在 **Secrets**，不是 Variables。
+如果 Discord 沒收到，先看 [Step 7：GitHub Actions 自動排程](#step-7github-actions-自動排程) 的錯誤對照表。注意：四個必填值與選填的圖片 Webhook 都要放在 **Secrets**，不是 Variables。
 
 ---
 
@@ -52,7 +52,7 @@
 
 接下來會**持續更新**，重點方向：
 
-- 🎨 **全新 UI / UX** — 不再只有 Telegram 通知，將推出互動式網頁 Dashboard（今日訊號表、個股卡片、Performance 回測曲線）
+- 🎨 **全新 UI / UX** — 不再只有 Discord 通知，將推出互動式網頁 Dashboard（今日訊號表、個股卡片、Performance 回測曲線）
 - 🤖 **Multi-Agent 互動介面** — 結合 CopilotKit + LangGraph，讓你直接「跟 AI 對話」管理觀察清單、重跑選股、做 what-if 回測
 
 敬請期待，也歡迎繼續提 issue 與 PR 一起把它做得更好！
@@ -61,7 +61,7 @@
 
 ## 🆕 V3.3 — 策略庫 + AI 生策略 Web UI
 
-過去只有 Telegram 通知，這版開始有了**完整的互動式網頁介面**。`main.py` 的單一寫死策略也重構成「**參數化策略**」，每個策略 = `strategies/<id>.json` 一份檔案，可在網頁上建立、調參、執行。
+過去只有 Discord 通知，這版開始有了**完整的互動式網頁介面**。`main.py` 的單一寫死策略也重構成「**參數化策略**」，每個策略 = `strategies/<id>.json` 一份檔案，可在網頁上建立、調參、執行。
 
 新增兩個服務：
 
@@ -92,7 +92,7 @@ cd web && npm install && npm run dev
 > 舊版策略本質是「一份扁平 20 格參數 + 固定四技術訊號」，表達力有限。這版正在做一次**地基級重構**：把策略升級成「**多流派因子 × 持有週期 × 大盤 regime 自適應**」，用**多角色 AI 專家協作**設計、用**確定性回測引擎**驗證，產出更精準的策略庫。
 
 > ### ✅ 這會影響我現在的使用嗎？完全不會。
-> `uv run python main.py` 跑的**還是原本穩定的選股邏輯**，所有現有功能（夜盤快報、策略庫、Telegram 通知）照常。V3.4 是**獨立並行開發**的新引擎——它要等全部完成、且經過充分歷史回測驗證後，才會無痛接上 `main.py`。**在那之前，你開箱即用、零影響。** 下面的內容是給想了解技術方向、或想一起貢獻的人看的 👇
+> `uv run python main.py` 跑的**還是原本穩定的選股邏輯**，所有現有功能（夜盤快報、策略庫、Discord 通知）照常。V3.4 是**獨立並行開發**的新引擎——它要等全部完成、且經過充分歷史回測驗證後，才會無痛接上 `main.py`。**在那之前，你開箱即用、零影響。** 下面的內容是給想了解技術方向、或想一起貢獻的人看的 👇
 
 ### 為什麼這樣重構（舊策略「太 rough」的三個根因）
 
@@ -206,7 +206,7 @@ print('composite =', round(compute_all_factors(ctx, fl, {})['composite'], 3))
 
 ### 啟用方式
 
-本機先測一次（會真的發一則 Telegram）：
+本機先測一次（會真的發一則 Discord）：
 
 ```bash
 uv run python premarket.py
@@ -223,21 +223,26 @@ uv run python premarket.py
 一個 **單檔 Python 腳本**，幫你每天自動做三件事：
 
 ```
-Google Sheet 股票池 → 跑策略評分 → Telegram 推播 + Sheet 紀錄
+Google Sheet 股票池 → 跑策略評分 → Discord 推播 + Sheet 紀錄
 ```
 
 你只需要維護一張 Google Sheet 的觀察清單，系統每天台股收盤後自動：
 
 1. **抓資料** — 透過 FinMind API 取得基本面財報 + 日 K 線
 2. **跑策略** — 基本面篩選 → 技術面評分 → 3 年歷史回測
-3. **發通知** — Telegram 推播買進/觀察訊號，附完整進出場價位
+3. **發通知** — Discord 推播買進/觀察訊號，附完整進出場價位
 4. **存紀錄** — 結果寫回 Google Sheet，累積歷史追蹤
 
 **不用租伺服器、不用學框架、不用碰資料庫。** Fork 這個 repo，設好環境變數，就會自動跑。
 
 ---
 
-## 📱 Telegram 通知長這樣
+## 📱 Discord 通知長這樣
+
+`V3 Daily Signal` 會保留原有 Discord 文字推播，並在文字訊息後額外附上一張
+1080 × 1800 的白底「0050追蹤選股日報」 PNG，集中呈現大盤、夜盤、加權指數近 60 日
+K 線（含 5/10/20/60 日均線與成交量）、強勢股與可關注股。圖片由 HTML
+固定版型產生；若圖片渲染失敗，不會影響原有文字報告。
 
 **第一則 — 市場總覽**
 
@@ -297,7 +302,7 @@ Google Sheet 股票池 → 跑策略評分 → Telegram 推播 + Sheet 紀錄
 | 服務 | 用途 | 取得方式 |
 |------|------|----------|
 | [FinMind](https://finmindtrade.com/) | 台股財報 + K 線資料 | 免費註冊，拿 API token |
-| [Telegram Bot](https://t.me/BotFather) | 推播通知 | 找 @BotFather 建 bot |
+| [Discord Webhook](https://support.discord.com/hc/zh-tw/articles/228383668) | 推播通知 | 在頻道整合設定建立 Webhook |
 | [Google Sheet](https://sheets.google.com) | 股票池 + 訊號紀錄 | 建一張空的 Sheet |
 | [GCP Service Account](https://console.cloud.google.com/) | 程式讀寫 Sheet 的權限 | 建 SA，下載 JSON 金鑰 |
 
@@ -334,10 +339,10 @@ cd stock-strategies-only
 3. 建立 **Service Account**，下載 JSON 金鑰
 4. 把 JSON 裡的 `client_email`（長得像 `xxx@xxx.iam.gserviceaccount.com`）加到你的 Google Sheet 共用權限（**編輯者**）
 
-### Step 4：設定 Telegram Bot
+### Step 4：設定 Discord Webhook
 
-1. Telegram 搜尋 **@BotFather**，輸入 `/newbot` 建立機器人，拿到 `BOT_TOKEN`
-2. 搜尋 **@userinfobot**，拿到你的 `CHAT_ID`
+1. 在 Discord 伺服器開啟接收通知的頻道，進入 **編輯頻道 → 整合 → Webhooks**
+2. 按 **新增 Webhook**，選擇目標頻道後複製 Webhook URL
 
 ### Step 5：設定 FinMind
 
@@ -360,33 +365,33 @@ cp .env.example .env
 uv run python main.py
 ```
 
-成功的話，你的 Telegram 會收到選股通知，Google Sheet 的 Signals 分頁會出現新資料。
+成功的話，你的 Discord 會收到選股通知，Google Sheet 的 Signals 分頁會出現新資料。
 
 ### Step 7：GitHub Actions 自動排程
 
 到你 fork 的 repo → **Settings** → **Secrets and variables** → **Actions**。
 
-請切到 **Secrets** 分頁，按 **New repository secret**，加入五個 secret：
+請切到 **Secrets** 分頁，按 **New repository secret**，加入四個必填 secret；若要將 PNG 額外發送到另一個頻道，再加入選填的 `DISCORD_REPORT_WEBHOOK_URL`：
 
 | Secret 名稱 | 值 |
 |---|---|
 | `FINMIND_TOKEN` | 你的 FinMind API token |
-| `TELEGRAM_BOT_TOKEN` | 你的 Telegram Bot token |
-| `TELEGRAM_CHAT_ID` | 你的 Telegram Chat ID |
+| `DISCORD_WEBHOOK_URL` | 你的 Discord Webhook URL |
+| `DISCORD_REPORT_WEBHOOK_URL` | 選填；圖片日報額外發送頻道的 Discord Webhook URL |
 | `GOOGLE_SHEET_ID` | 你的 Google Sheet ID |
 | `GOOGLE_CREDS_JSON` | Service Account JSON **整串貼進去** |
 
-> 不要把這五個值填到 **Variables**。本 repo 的 workflow 讀的是 `${{ secrets.FINMIND_TOKEN }}` 這種 `secrets.*`，如果填到 Variables，Actions 會顯示 `Missing ...` 或在執行時讀不到 token。Variables 只適合放非敏感設定，例如未來如果要自訂掃描檔數、策略名稱、debug 開關，才放那邊。
+> 不要把這些值填到 **Variables**。本 repo 的 workflow 讀的是 `${{ secrets.FINMIND_TOKEN }}` 這種 `secrets.*`，如果填到 Variables，Actions 會顯示 `Missing ...` 或在執行時讀不到 token。Variables 只適合放非敏感設定，例如未來如果要自訂掃描檔數、策略名稱、debug 開關，才放那邊。
 
 本 repo 已內建三支 workflow：
 
 | Workflow | 用途 | 觸發 |
 |---|---|---|
-| `Telegram Smoke Test` | 只測 Telegram token / chat id 是否正確 | 手動 |
-| `V3 Daily Signal` | 收盤後跑 `main.py` 選股並推 Telegram | 每交易日台灣時間 14:30 / 手動 |
+| `Discord Webhook Smoke Test` | 只測 Discord webhook 是否正確 | 手動 |
+| `V3 Daily Signal` | 收盤後跑 `main.py` 選股並推 Discord | 每交易日台灣時間 14:30 / 手動 |
 | `Premarket Night Session` | 盤前跑 `premarket.py` 夜盤快報 | 每交易日台灣時間 08:00 / 手動 |
 
-先到 **Actions** → **Telegram Smoke Test** → **Run workflow**。如果 Telegram 收得到測試訊息，代表 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 正確。
+先到 **Actions** → **Discord Webhook Smoke Test** → **Run workflow**。如果 Discord 收得到測試訊息，代表 `DISCORD_WEBHOOK_URL` 正確。
 
 接著到 **Actions** → **V3 Daily Signal** → **Run workflow** 手動跑一次完整選股。沒問題後，每個交易日**台灣時間 14:30**會自動執行。需要夜盤快報的話，再手動測一次 **Premarket Night Session**；它會在每個交易日**台灣時間 08:00**自動執行。
 
@@ -396,9 +401,8 @@ uv run python main.py
 
 | Actions 錯誤 | 通常原因 | 怎麼處理 |
 |---|---|---|
-| `Missing TELEGRAM_BOT_TOKEN` | secret 沒設或名稱拼錯 | 到 repo 的 Actions secrets 新增同名 secret |
-| `401 Unauthorized` | Telegram bot token 錯 | 回 @BotFather 重新複製 token |
-| `400 chat not found` | `TELEGRAM_CHAT_ID` 錯，或你還沒打開 bot | 先對你的 bot 按 `/start`，再重新查 chat id |
+| `Missing DISCORD_WEBHOOK_URL` | secret 沒設或名稱拼錯 | 到 repo 的 Actions secrets 新增同名 secret |
+| `401/404` 或 webhook request failed | Discord Webhook URL 無效或已刪除 | 回 Discord 頻道整合設定重新複製或建立 Webhook URL |
 | `讀取 watchlist 失敗` | Google Sheet secret 或分享權限錯 | 確認 `GOOGLE_CREDS_JSON` 是整串 JSON，且 service account email 已被加到 Sheet 編輯者 |
 | FinMind request/rate limit | `FINMIND_TOKEN` 錯或 API 額度暫時被打滿 | 確認 token，稍後重跑 workflow |
 
@@ -530,7 +534,7 @@ signal_score = round(
 ```
 【收盤後 14:30 — main.py 選股】
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│ Google Sheet │────▶│  Python 腳本  │────▶│  Telegram   │
+│ Google Sheet │────▶│  Python 腳本  │────▶│  Discord   │
 │  (Watchlist) │     │              │     │  (通知推播)  │
 └─────────────┘     │  1. 讀觀察清單 │     └─────────────┘
                     │  2. FinMind API│
@@ -541,7 +545,7 @@ signal_score = round(
 
 【盤前 08:00 — premarket.py 夜盤快報】
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│   FinMind   │────▶│  夜盤近月漲跌  │────▶│  Telegram   │
+│   FinMind   │────▶│  夜盤近月漲跌  │────▶│  Discord   │
 │ (台指期夜盤) │     │  → 開盤方向    │     │ (盤前快報)   │
 └─────────────┘     │  + 疊加昨日訊號 │     └─────────────┘
 ┌─────────────┐     │  (順風/逆風)   │
@@ -573,13 +577,13 @@ stock-strategies-only/
 │   ├── indicators.py          # 技術指標計算 + 評分
 │   ├── backtest.py            # 歷史回測
 │   ├── evaluate.py            # 綜合評估（組合以上模組）
-│   └── notify.py              # Telegram 格式化 + 發送
+│   └── notify.py              # Discord 格式化 + 發送
 ├── pyproject.toml             # Python 依賴管理（uv）
 ├── uv.lock                    # 鎖定版本
 ├── .github/workflows/
 │   ├── daily.yml              # GitHub Actions：收盤後選股（14:30）
 │   ├── premarket.yml          # GitHub Actions：盤前夜盤快報（08:00）
-│   └── telegram-smoke-test.yml # 手動測 Telegram secret 是否正確
+│   └── discord-smoke-test.yml # 手動測 Discord secret 是否正確
 ├── daily.yml                  # workflow 範本：收盤後選股
 ├── premarket.yml              # workflow 範本：盤前夜盤快報
 ├── .env.example               # 環境變數範本
@@ -612,9 +616,9 @@ Private repo 每月免費 2000 分鐘，這個 workflow 每次約 2 分鐘，每
 </details>
 
 <details>
-<summary><b>想用 LINE Notify 而不是 Telegram？</b></summary>
+<summary><b>想改用其他通知服務？</b></summary>
 
-改寫 `stock_strategies/notify.py` 裡的 `send_telegram()` 函式，換成 LINE Notify API 即可，其他模組完全不用動。
+改寫 `stock_strategies/notify.py` 裡的 `send_discord()` 函式，換成目標服務的 API 即可，其他模組完全不用動。
 
 </details>
 
