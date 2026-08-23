@@ -36,16 +36,30 @@ def send_discord(text: str):
 
 
 def send_discord_image(image_path: str, filename: str = "daily-report.png"):
-    """透過同一個 Discord webhook 上傳每日報告圖。"""
-    with open(image_path, "rb") as image_file:
-        r = requests.post(
-            os.environ["DISCORD_WEBHOOK_URL"],
-            data={"content": "🖼️ 0050追蹤選股日報"},
-            files={"file": (filename, image_file, "image/png")},
-            timeout=30,
-        )
-    if not r.ok:
-        print(f"Discord 報告圖發送失敗: {r.status_code} {r.text}", file=sys.stderr)
+    """上傳圖片到主頻道，並可選擇額外發送到獨立報告頻道。"""
+    primary_url = os.environ["DISCORD_WEBHOOK_URL"]
+    report_url = os.environ.get("DISCORD_REPORT_WEBHOOK_URL", "").strip()
+    urls = [primary_url]
+    if report_url and report_url != primary_url:
+        urls.append(report_url)
+
+    for url in urls:
+        try:
+            with open(image_path, "rb") as image_file:
+                r = requests.post(
+                    url,
+                    data={"content": "🖼️ 0050追蹤選股日報"},
+                    files={"file": (filename, image_file, "image/png")},
+                    timeout=30,
+                )
+        except requests.RequestException as e:
+            print(f"Discord 報告圖發送失敗: {e}", file=sys.stderr)
+            continue
+        if not r.ok:
+            print(
+                f"Discord 報告圖發送失敗: {r.status_code} {r.text}",
+                file=sys.stderr,
+            )
 
 
 def _trend_emoji(chg: float) -> str:

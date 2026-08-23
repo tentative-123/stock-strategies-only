@@ -38,6 +38,7 @@ def test_send_discord_splits_messages_at_discord_limit(monkeypatch, mocker):
 
 def test_send_discord_image_uploads_png(tmp_path, monkeypatch, mocker):
     monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.test/webhook")
+    monkeypatch.delenv("DISCORD_REPORT_WEBHOOK_URL", raising=False)
     image_path = tmp_path / "report.png"
     image_path.write_bytes(b"png")
     post = mocker.patch("stock_strategies.notify.requests.post")
@@ -51,6 +52,45 @@ def test_send_discord_image_uploads_png(tmp_path, monkeypatch, mocker):
     assert call.kwargs["files"]["file"][0] == "daily-report.png"
     assert call.kwargs["files"]["file"][2] == "image/png"
     assert call.kwargs["timeout"] == 30
+
+
+def test_send_discord_image_also_posts_to_report_channel(tmp_path, monkeypatch, mocker):
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.test/main")
+    monkeypatch.setenv(
+        "DISCORD_REPORT_WEBHOOK_URL", "https://discord.test/report"
+    )
+    image_path = tmp_path / "report.png"
+    image_path.write_bytes(b"png-content")
+    uploads = []
+
+    def capture_upload(url, **kwargs):
+        uploads.append((url, kwargs["files"]["file"][1].read()))
+        return Mock(ok=True)
+
+    mocker.patch(
+        "stock_strategies.notify.requests.post", side_effect=capture_upload
+    )
+
+    send_discord_image(str(image_path))
+
+    assert uploads == [
+        ("https://discord.test/main", b"png-content"),
+        ("https://discord.test/report", b"png-content"),
+    ]
+
+
+def test_send_discord_image_does_not_duplicate_same_webhook(tmp_path, monkeypatch, mocker):
+    webhook = "https://discord.test/same"
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", webhook)
+    monkeypatch.setenv("DISCORD_REPORT_WEBHOOK_URL", webhook)
+    image_path = tmp_path / "report.png"
+    image_path.write_bytes(b"png")
+    post = mocker.patch("stock_strategies.notify.requests.post")
+    post.return_value = Mock(ok=True)
+
+    send_discord_image(str(image_path))
+
+    post.assert_called_once()
 
 
 def _signal(stock_id: str, action: str) -> dict:

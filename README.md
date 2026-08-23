@@ -32,16 +32,17 @@
 
 這個 repo 已內建 GitHub Actions。Fork 後不用租伺服器，只要設定 secrets，就能每天自動跑。
 
-1. 到 fork 後的 repo → **Settings** → **Secrets and variables** → **Actions** → **Secrets**，新增：
+1. 到 fork 後的 repo → **Settings** → **Secrets and variables** → **Actions** → **Secrets**，新增四個必填 Secret，並可選擇加上圖片專用 Secret：
    - `FINMIND_TOKEN`
    - `DISCORD_WEBHOOK_URL`
    - `GOOGLE_SHEET_ID`
    - `GOOGLE_CREDS_JSON`
+   - `DISCORD_REPORT_WEBHOOK_URL`（選填；將 PNG 日報額外發到另一個頻道）
 2. 到 **Actions** → **Discord Webhook Smoke Test** → **Run workflow**。
 3. Discord 收到測試訊息後，再跑 **V3 Daily Signal**。
 4. 測試成功後，每個交易日台灣時間 **14:30** 自動選股推播；**08:00** 會推夜盤盤前快報。
 
-如果 Discord 沒收到，先看 [Step 7：GitHub Actions 自動排程](#step-7github-actions-自動排程) 的錯誤對照表。注意：這四個值都要放在 **Secrets**，不是 Variables。
+如果 Discord 沒收到，先看 [Step 7：GitHub Actions 自動排程](#step-7github-actions-自動排程) 的錯誤對照表。注意：四個必填值與選填的圖片 Webhook 都要放在 **Secrets**，不是 Variables。
 
 ---
 
@@ -370,16 +371,17 @@ uv run python main.py
 
 到你 fork 的 repo → **Settings** → **Secrets and variables** → **Actions**。
 
-請切到 **Secrets** 分頁，按 **New repository secret**，加入四個 secret：
+請切到 **Secrets** 分頁，按 **New repository secret**，加入四個必填 secret；若要將 PNG 額外發送到另一個頻道，再加入選填的 `DISCORD_REPORT_WEBHOOK_URL`：
 
 | Secret 名稱 | 值 |
 |---|---|
 | `FINMIND_TOKEN` | 你的 FinMind API token |
 | `DISCORD_WEBHOOK_URL` | 你的 Discord Webhook URL |
+| `DISCORD_REPORT_WEBHOOK_URL` | 選填；圖片日報額外發送頻道的 Discord Webhook URL |
 | `GOOGLE_SHEET_ID` | 你的 Google Sheet ID |
 | `GOOGLE_CREDS_JSON` | Service Account JSON **整串貼進去** |
 
-> 不要把這四個值填到 **Variables**。本 repo 的 workflow 讀的是 `${{ secrets.FINMIND_TOKEN }}` 這種 `secrets.*`，如果填到 Variables，Actions 會顯示 `Missing ...` 或在執行時讀不到 token。Variables 只適合放非敏感設定，例如未來如果要自訂掃描檔數、策略名稱、debug 開關，才放那邊。
+> 不要把這些值填到 **Variables**。本 repo 的 workflow 讀的是 `${{ secrets.FINMIND_TOKEN }}` 這種 `secrets.*`，如果填到 Variables，Actions 會顯示 `Missing ...` 或在執行時讀不到 token。Variables 只適合放非敏感設定，例如未來如果要自訂掃描檔數、策略名稱、debug 開關，才放那邊。
 
 本 repo 已內建三支 workflow：
 
