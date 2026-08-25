@@ -1,7 +1,7 @@
 {
   "id": "default",
-  "name": "預設策略 V3.2 (基本面+技術+回測)",
-  "description": "原 main.py hardcoded 策略：EPS>5 & ROE>15 過門檻 → 技術四訊號評分 → 3 年回測勝率，三項加權 0.3/0.3/0.4，總分 ≥65 且基本面通過且技術 ≥50 才 BUY。停損 -8% / 停利 +10%，持有 20 日。",
+  "name": "預設策略 V3.3 (基本面+技術+籌碼+雙回測)",
+  "description": "基本面、技術面、外資投信當前籌碼、技術回測與籌碼回測分別加權 25%/25%/20%/15%/15%。",
   "source": "default",
   "created_at": "2026-04-09T00:00:00Z",
   "updated_at": "2026-04-09T00:00:00Z",
@@ -17,9 +17,12 @@
     "target_return": 0.10,
     "stop_loss": 0.08,
 
-    "weight_fundamental": 0.3,
-    "weight_technical": 0.3,
-    "weight_backtest": 0.4,
+    "weight_fundamental": 0.25,
+    "weight_technical": 0.25,
+    "weight_chips": 0.20,
+    "weight_backtest": 0.15,
+    "weight_chip_backtest": 0.15,
+    "min_chip_score_for_signal": 60,
     "min_total_score_for_buy": 65,
     "min_tech_score_for_buy": 50,
 

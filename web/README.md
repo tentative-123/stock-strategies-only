@@ -23,7 +23,7 @@ npm run dev
 
 ## 環境變數
 
-延用根目錄的 `.env`（FINMIND_TOKEN、GOOGLE_*、TELEGRAM_*），另外新增：
+延用根目錄的 `.env`（FINMIND_TOKEN、GOOGLE_*、DISCORD_WEBHOOK_URL），另外新增：
 
 | 變數 | 必填 | 說明 |
 | --- | --- | --- |
