@@ -13,9 +13,14 @@ def test_market_state_bullish(monkeypatch):
     state = market.get_market_state(ma_period=20)
     assert state["bullish"] is True
     assert state["close"] == close[-1]
+    assert len(state["history"]) == 40
+    assert state["history"][-1]["ma5"] is not None
+    assert state["history"][-1]["ma20"] is not None
+    assert state["history"][-1]["ma60"] is None
 
 
 def test_market_state_handles_empty(monkeypatch):
     monkeypatch.setattr(market, "get_index_history", lambda *a, **k: pd.DataFrame())
     state = market.get_market_state()
     assert state["bullish"] is True   # 資料不足 → 不套濾鏡（沿用原行為）
+    assert state["history"] == []

@@ -54,7 +54,9 @@ export default function StrategyForm({ initial, onSaved, saveLabel = "儲存到�
     }
   }
 
-  const weightSum = (params.weight_fundamental || 0) + (params.weight_technical || 0) + (params.weight_backtest || 0);
+  const weightSum = (params.weight_fundamental || 0) + (params.weight_technical || 0)
+    + (params.weight_chips || 0) + (params.weight_backtest || 0)
+    + (params.weight_chip_backtest || 0);
   const weightOk = Math.abs(weightSum - 1) < 0.01;
 
   return (
@@ -83,6 +85,8 @@ export default function StrategyForm({ initial, onSaved, saveLabel = "儲存到�
         <NumField label="持有日數" value={params.hold_days} step={1} onChange={(v) => setP("hold_days", v)} />
         <NumField label="回測訊號門檻 (技術分)" value={params.min_tech_score_for_signal} step={5}
           onChange={(v) => setP("min_tech_score_for_signal", v)} />
+        <NumField label="回測訊號門檻 (籌碼分)" value={params.min_chip_score_for_signal} step={5}
+          onChange={(v) => setP("min_chip_score_for_signal", v)} />
       </Section>
 
       <Section title="風險">
@@ -97,8 +101,12 @@ export default function StrategyForm({ initial, onSaved, saveLabel = "儲存到�
           onChange={(v) => setP("weight_fundamental", v)} />
         <NumField label="技術面權重" value={params.weight_technical} step={0.05}
           onChange={(v) => setP("weight_technical", v)} />
-        <NumField label="回測權重" value={params.weight_backtest} step={0.05}
+        <NumField label="當前籌碼權重" value={params.weight_chips} step={0.05}
+          onChange={(v) => setP("weight_chips", v)} />
+        <NumField label="技術回測權重" value={params.weight_backtest} step={0.05}
           onChange={(v) => setP("weight_backtest", v)} />
+        <NumField label="籌碼回測權重" value={params.weight_chip_backtest} step={0.05}
+          onChange={(v) => setP("weight_chip_backtest", v)} />
         <NumField label="總分 BUY 門檻" value={params.min_total_score_for_buy} step={5}
           onChange={(v) => setP("min_total_score_for_buy", v)} />
         <NumField label="技術分 BUY 門檻" value={params.min_tech_score_for_buy} step={5}

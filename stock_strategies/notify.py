@@ -5,19 +5,61 @@ from datetime import datetime
 import numpy as np
 import requests
 
-from .config import CONFIG, TELEGRAM_API
+from .config import CONFIG
 
 
-def send_telegram(text: str):
-    url = TELEGRAM_API.format(token=os.environ["TELEGRAM_BOT_TOKEN"])
-    payload = {
-        "chat_id": os.environ["TELEGRAM_CHAT_ID"],
-        "text": text,
-        "parse_mode": "Markdown",
-    }
-    r = requests.post(url, json=payload, timeout=10)
-    if not r.ok:
-        print(f"Telegram 送失敗: {r.text}", file=sys.stderr)
+DISCORD_MESSAGE_LIMIT = 2000
+
+
+def _split_discord_message(text: str) -> list[str]:
+    """依 Discord 單則訊息上限分段，優先在換行處切開。"""
+    chunks = []
+    remaining = text
+    while len(remaining) > DISCORD_MESSAGE_LIMIT:
+        split_at = remaining.rfind("\n", 0, DISCORD_MESSAGE_LIMIT + 1)
+        if split_at <= 0:
+            split_at = DISCORD_MESSAGE_LIMIT
+        chunks.append(remaining[:split_at])
+        remaining = remaining[split_at:].lstrip("\n")
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
+def send_discord(text: str):
+    """透過 Discord webhook 發送報告。"""
+    url = os.environ["DISCORD_WEBHOOK_URL"]
+    for chunk in _split_discord_message(text):
+        r = requests.post(url, json={"content": chunk}, timeout=10)
+        if not r.ok:
+            print(f"Discord 發送失敗: {r.status_code} {r.text}", file=sys.stderr)
+
+
+def send_discord_image(image_path: str, filename: str = "daily-report.png"):
+    """上傳圖片到主頻道，並可選擇額外發送到獨立報告頻道。"""
+    primary_url = os.environ["DISCORD_WEBHOOK_URL"]
+    report_url = os.environ.get("DISCORD_REPORT_WEBHOOK_URL", "").strip()
+    urls = [primary_url]
+    if report_url and report_url != primary_url:
+        urls.append(report_url)
+
+    for url in urls:
+        try:
+            with open(image_path, "rb") as image_file:
+                r = requests.post(
+                    url,
+                    data={"content": "🖼️ 0050追蹤選股日報"},
+                    files={"file": (filename, image_file, "image/png")},
+                    timeout=30,
+                )
+        except requests.RequestException as e:
+            print(f"Discord 報告圖發送失敗: {e}", file=sys.stderr)
+            continue
+        if not r.ok:
+            print(
+                f"Discord 報告圖發送失敗: {r.status_code} {r.text}",
+                file=sys.stderr,
+            )
 
 
 def _trend_emoji(chg: float) -> str:
@@ -36,6 +78,7 @@ def _format_stock_detail(s: dict, show_trend: bool = True) -> list[str]:
     t = s.get("trend", {})
     lines = []
     wr = f"{c['backtest_winrate']*100:.0f}%" if c.get("backtest_winrate") else "N/A"
+    chip_wr = f"{c['chip_backtest_winrate']*100:.0f}%" if c.get("chip_backtest_winrate") is not None else "N/A"
     fund = "✅" if c.get("fundamental_pass") else "❌"
 
     lines.append(f"*{s['stock_id']} {s['name']}*  綜合 {s['signal_score']} 分")
@@ -53,22 +96,25 @@ def _format_stock_detail(s: dict, show_trend: bool = True) -> list[str]:
             f"距高點{t.get('pct_from_high', 0):.0f}% | {ma_status} | {vol_note}"
         )
     lines.append(
-        f"📌 *明日開盤進場* | 參考價 {s['entry_price']}"
-    )
-    lines.append(
-        f"停損 {s['stop_loss_price']} (-{CONFIG['stop_loss']*100:.0f}%) / "
-        f"目標 {s['target_price']} (+{CONFIG['target_return']*100:.0f}%)"
-    )
-    lines.append(
         f"風報比 1:{s['risk_reward_ratio']} | 建議部位 {s['position_size_pct']}%"
     )
     lines.append(
         f"基本面{fund} | 技術分 {c.get('tech_score', 'N/A')} | 勝率 {wr} ({c.get('backtest_samples', 0)}次)"
     )
+    lines.append(
+        f"籌碼分 {c.get('chip_score', 'N/A')} | 籌碼回測 {chip_wr} ({c.get('chip_backtest_samples', 0)}次)"
+    )
     if c.get("tech_signals"):
         lines.append(f"觸發: {', '.join(c['tech_signals'])}")
-    if s.get("risk_notes"):
-        lines.append(f"⚠️ {' / '.join(s['risk_notes'])}")
+    if c.get("chip_signals"):
+        lines.append(f"籌碼觸發: {', '.join(c['chip_signals'][:3])}")
+    risk_notes = [
+        note
+        for note in s.get("risk_notes", [])
+        if not (note.startswith("歷史勝率") and "低於五成" in note)
+    ]
+    if risk_notes:
+        lines.append(f"⚠️ {' / '.join(risk_notes)}")
     return lines
 
 
@@ -148,7 +194,7 @@ def format_messages(
     market: dict = None,
     night_note: str = None,
 ) -> list[str]:
-    """產生多則 Telegram 訊息"""
+    """產生多則 Discord 訊息"""
     buys = [s for s in signals if s.get("action") == "BUY"]
     watches = [s for s in signals if s.get("action") == "WATCH"]
     skips = [s for s in signals if s.get("action") in ("SKIP", "ERROR")]
@@ -192,43 +238,34 @@ def format_messages(
 
     msg1.append("📋 *策略規則*")
     msg1.append(
-        "基本面(EPS>5,ROE>15) + 技術面(均線/布林/KD/MACD) + 3年回測\n"
-        f"綜合 = 基本面30% + 技術30% + 回測40%\n"
+        "基本面 + 技術面 + 外資投信籌碼 + 技術/籌碼3年回測\n"
+        f"綜合 = 基本25% + 技術25% + 當前籌碼20% + 技術回測15% + 籌碼回測15%\n"
         f"BUY≥65(三關全過) | WATCH≥50\n"
         f"停損{CONFIG['stop_loss']*100:.0f}% / 停利{CONFIG['target_return']*100:.0f}% / 持有{CONFIG['hold_days']}日"
     )
     messages.append("\n".join(msg1))
 
-    # === 第二則：BUY 詳細 ===
+    # === 第二則：強勢股 + 可關注股 ===
     msg2 = []
     if buys:
-        msg2.append(f"🟢 *BUY — 建議進場 ({len(buys)})*")
+        top_buys = buys[:5]
+        msg2.append(f"🟢 *今日預計強勢股 ({len(top_buys)})*")
         msg2.append("")
-        for s in buys:
+        for s in top_buys:
             msg2.extend(_format_stock_detail(s))
-            msg2.append(f"💡 為何買: {_explain_why(s)}")
             msg2.append("")
     else:
-        msg2.append("🟢 *BUY: 今日無符合全部條件的標的*")
-        msg2.append("（需基本面+技術面+回測三關全過）")
+        msg2.append("🟢 *今日預計強勢股：今日無符合全部條件的標的*")
+        msg2.append("（綜合基本面、技術面、籌碼面與雙回測）")
         msg2.append("")
 
     if watches:
-        top_watches = watches[:8]
-        rest_watches = watches[8:]
-        msg2.append(f"🟡 *WATCH — 接近訊號 TOP {len(top_watches)}*")
+        top_watches = watches[:3]
+        msg2.append(f"🟡 *今日可關注股 ({len(top_watches)})*")
         msg2.append("")
         for s in top_watches:
             msg2.extend(_format_stock_detail(s))
             msg2.append(f"❓ 差在: {_explain_why(s)}")
-            msg2.append("")
-
-        if rest_watches:
-            msg2.append(f"📎 *其他觀察 ({len(rest_watches)})*")
-            rest_line = ", ".join(
-                [f"{s['stock_id']}{s['name']}({s['signal_score']})" for s in rest_watches]
-            )
-            msg2.append(rest_line)
             msg2.append("")
     messages.append("\n".join(msg2))
 
@@ -257,10 +294,6 @@ def format_messages(
                 f"• *{s['stock_id']} {s['name']}* ({s['action']}, {s['signal_score']}分)"
             )
             msg3.append(f"  {reason}")
-            msg3.append(
-                f"  明日開盤進場（參考 {s['entry_price']}）→ "
-                f"損 {s['stop_loss_price']} / 標 {s['target_price']}"
-            )
             msg3.append("")
 
     msg3.append("📌 *操作方向*")
@@ -406,13 +439,20 @@ def format_premarket(night: dict | None, signals: list[dict]) -> str:
         buys = [s for s in batch if str(s["action"]).upper() == "BUY"]
         watches = [s for s in batch if str(s["action"]).upper() == "WATCH"]
         lines.append(f"📋 *昨日訊號 × 夜盤對照* ({latest_day})")
-        for s in (buys + watches)[:12]:
-            act = str(s["action"]).upper()
-            dot = "🟢" if act == "BUY" else "🟡"
-            lines.append(
-                f"{dot} {act} {s.get('stock_id', '')} {s.get('name', '')} "
-                f"{s.get('signal_score', '')}分 · {tag}"
-            )
+        if buys:
+            lines.append("🟢 *今日預計強勢股*")
+            for s in buys[:5]:
+                lines.append(
+                    f"• {s.get('stock_id', '')} {s.get('name', '')} "
+                    f"{s.get('signal_score', '')}分 · {tag}"
+                )
+        if watches:
+            lines.append("🟡 *今日可關注股*")
+            for s in watches[:3]:
+                lines.append(
+                    f"• {s.get('stock_id', '')} {s.get('name', '')} "
+                    f"{s.get('signal_score', '')}分 · {tag}"
+                )
         lines.append(f"↳ _{bias_guidance(bias)}_")
     else:
         lines.append("📋 昨日無 BUY/WATCH 訊號（或尚未跑過選股）")

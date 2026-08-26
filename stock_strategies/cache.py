@@ -22,6 +22,7 @@ from .config import (
     FINMIND_MIN_INTERVAL,
     RATE_LIMIT_BACKOFF_BASE,
     RATE_LIMIT_MAX_RETRIES,
+    FINMIND_MAX_REQUESTS_PER_RUN,
 )
 
 
@@ -65,6 +66,25 @@ def clear_cache(dataset: str | None = None, data_id: str | None = None) -> int:
 
 
 _last_request_monotonic = 0.0
+_request_count = 0
+
+
+def get_request_stats() -> dict:
+    return {"used": _request_count, "limit": FINMIND_MAX_REQUESTS_PER_RUN}
+
+
+def reset_request_stats() -> None:
+    global _request_count
+    _request_count = 0
+
+
+def _consume_request_budget() -> None:
+    global _request_count
+    if _request_count >= FINMIND_MAX_REQUESTS_PER_RUN:
+        raise FinMindRateLimitError(
+            f"FinMind 單次執行 API 防護上限 {FINMIND_MAX_REQUESTS_PER_RUN} 已達，停止新增請求"
+        )
+    _request_count += 1
 
 
 def _throttle() -> None:
@@ -96,6 +116,7 @@ def _rate_limited_get(params: dict, timeout: int, max_retries: int) -> dict:
     指數退避重試，耗盡 raise FinMindRateLimitError。回傳已解析的 json dict。"""
     attempt = 0
     while True:
+        _consume_request_budget()
         _throttle()
         resp = requests.get(FINMIND_URL, params=params, timeout=timeout)
         if _is_rate_limited(resp):

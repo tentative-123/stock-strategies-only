@@ -8,12 +8,29 @@
 from .datasources import get_index_history
 
 
+def _chart_history(df) -> list[dict]:
+    """整理報告圖所需的近 80 日 K 線、成交量與均線資料。"""
+    chart = df.copy()
+    for period in (5, 10, 20, 60):
+        chart[f"ma{period}"] = chart["close"].rolling(period).mean()
+    if "volume" not in chart.columns:
+        chart["volume"] = 0
+    columns = [
+        "date", "open", "high", "low", "close", "volume",
+        "ma5", "ma10", "ma20", "ma60",
+    ]
+    records = chart[columns].tail(80).copy()
+    records["date"] = records["date"].astype(str).str[:10]
+    records = records.astype(object).where(records.notna(), None)
+    return records.to_dict("records")
+
+
 def get_market_state(ma_period: int = 20) -> dict:
     """回傳大盤狀態 dict（可指定均線天數，預設 20=月線）"""
     try:
         df = get_index_history("TAIEX")
         if len(df) < ma_period + 1:
-            return {"bullish": True, "close": None, "ma20": None,
+            return {"bullish": True, "close": None, "ma20": None, "history": [],
                     "note": "⚠️ 大盤資料不足，暫不套用濾鏡"}
         df = df.copy()
         df["ma20"] = df["close"].rolling(ma_period).mean()
@@ -25,9 +42,15 @@ def get_market_state(ma_period: int = 20) -> dict:
             note = f"🟢 加權 {close:.0f} 站上 {ma_period} 日線 ({pct:+.1f}%)，BUY 訊號照常發出"
         else:
             note = f"🔴 加權 {close:.0f} 跌破 {ma_period} 日線 ({pct:+.1f}%)，BUY 全數降為 WATCH"
-        return {"bullish": bullish, "close": close, "ma20": ma20, "note": note}
+        return {
+            "bullish": bullish,
+            "close": close,
+            "ma20": ma20,
+            "history": _chart_history(df),
+            "note": note,
+        }
     except Exception as e:
-        return {"bullish": True, "close": None, "ma20": None,
+        return {"bullish": True, "close": None, "ma20": None, "history": [],
                 "note": f"⚠️ 大盤狀態取得失敗（{str(e)[:60]}），暫不套用濾鏡"}
 
 
