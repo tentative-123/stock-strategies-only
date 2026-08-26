@@ -15,16 +15,22 @@ def _signal(stock_id: str, action: str) -> dict:
         "components": {
             "tech_score": 65,
             "backtest_winrate": 0.61,
+            "chip_score": 73,
+            "chip_backtest_winrate": 0.64,
+            "chip_backtest_samples": 18,
+            "chip_signals": ["外資5日買超占量 +27.0%", "投信5日買超占量 +5.2%"],
             "tech_signals": ["MACD多頭"],
             "volume_patterns": ["梯量柱"],
             "volume_verdict": "量能階梯推升，走勢健康",
         },
         "trend": {
+            "chg_1d": 0.8,
             "chg_5d": 2.1,
             "chg_20d": 4.2,
             "vol_ratio": 1.3,
             "above_ma20": True,
             "above_ma60": True,
+            "new_high_20": True,
         },
     }
 
@@ -63,6 +69,11 @@ def test_build_report_html_has_stable_sections_and_limits():
     assert "0050追蹤選股日報" in report
     assert "今日預計強勢股" in report
     assert "今日可關注股" in report
+    assert "市場廣度" in report
+    assert "上漲</span><strong>10 / 10" in report
+    assert "站上月線</span><strong>10 / 10" in report
+    assert "創 20 日新高</span><strong>10 / 10" in report
+    assert "掃描範圍" not in report
     assert "族群動能" not in report
     assert "加權指數｜日 K 趨勢" in report
     assert "MA5" in report and "MA10" in report and "MA20" in report and "MA60" in report
@@ -70,7 +81,7 @@ def test_build_report_html_has_stable_sections_and_limits():
     assert "class=\"volume rise\"" in report
     assert "grid-template-columns:1fr 1fr" in report
     assert 'class="panel count-5"' in report
-    assert 'class="panel count-3"' in report
+    assert 'class="panel watch-panel count-3"' in report
     assert ".panel.count-5 .stock-card" in report
     assert "height:520px" in report
     assert "股市艾斯DC台股頻道" in report
@@ -79,6 +90,10 @@ def test_build_report_html_has_stable_sections_and_limits():
     assert "V3 DAILY SIGNAL" not in report
     assert "深度分析" in report
     assert "量價解讀" in report
+    assert "籌碼</b>" in report
+    assert "外5 +27.0%｜投5 +5.2%｜回測 64%·18次" in report
+    assert "外資5日買超占量" not in report
+    assert ".watch-panel.count-3 .stock-card" in report
     assert "帶量上攻" in report
     assert "梯量柱｜量能階梯推升，走勢健康" in report
     assert "2026 / 08 / 21" in report

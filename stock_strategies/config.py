@@ -15,6 +15,7 @@ CACHE_FRESH_DAYS = {"daily": 1, "monthly": 20, "weekly": 5, "quarterly": 60, "st
 FINMIND_MIN_INTERVAL = 0.12       # 相鄰請求最小間隔秒
 RATE_LIMIT_BACKOFF_BASE = 5       # 限流退避基數秒
 RATE_LIMIT_MAX_RETRIES = 4
+FINMIND_MAX_REQUESTS_PER_RUN = int(os.environ.get("FINMIND_MAX_REQUESTS_PER_RUN", "400"))
 
 # ── context ──
 MIN_PRICE_ROWS = 60               # 少於此列數視為新股／資料不足

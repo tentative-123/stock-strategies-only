@@ -147,6 +147,9 @@ def main():
         # 圖片產生失敗不影響原有文字報告與選股流程。
         print(f"⚠️ 每日報告圖產生失敗: {e}", file=sys.stderr)
 
+    from stock_strategies.cache import get_request_stats
+    api_stats = get_request_stats()
+    print(f"FinMind API 使用量: {api_stats['used']} / {api_stats['limit']}")
     print("✅ 完成")
 
 

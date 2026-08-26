@@ -17,7 +17,7 @@
 - 這支程式還在星期天開盤前推薦過一支即使大盤被狂殺、依舊漲停的股票，也推薦了星期一可以「便宜加碼」的標的，還不錯～
 ---
 
-> **基本面 × 技術面 × 歷史回測** — 全自動掃描、評分、推播  
+> **基本面 × 技術面 × 法人籌碼 × 雙回測** — 全自動掃描、評分、推播
 > 每天收盤後自動跑，Discord 收通知，Google Sheet 存紀錄
 > 零伺服器成本，GitHub Actions 免費跑
 
@@ -229,7 +229,7 @@ Google Sheet 股票池 → 跑策略評分 → Discord 推播 + Sheet 紀錄
 你只需要維護一張 Google Sheet 的觀察清單，系統每天台股收盤後自動：
 
 1. **抓資料** — 透過 FinMind API 取得基本面財報 + 日 K 線
-2. **跑策略** — 基本面篩選 → 技術面評分 → 3 年歷史回測
+2. **跑策略** — 基本面與技術面評分 → 外資/投信籌碼占量評分 → 技術與籌碼回測
 3. **發通知** — Discord 推播買進/觀察訊號，附完整進出場價位
 4. **存紀錄** — 結果寫回 Google Sheet，累積歷史追蹤
 
@@ -270,6 +270,7 @@ K 線（含 5/10/20/60 日均線與成交量）、強勢股與可關注股。圖
 進場 1660 → 停損 1527.2 / 目標 1826
 風報比 1:1.25 | 建議部位 20%
 基本面✅ | 技術分 75 | 勝率 68% (12次)
+籌碼分 72 | 籌碼回測 63% (19次)
 觸發: 均線多頭, KD黃金交叉, MACD多頭
 💡 為何買: 所有條件皆達標
 ```
@@ -376,6 +377,7 @@ uv run python main.py
 | Secret 名稱 | 值 |
 |---|---|
 | `FINMIND_TOKEN` | 你的 FinMind API token |
+| `FINMIND_MAX_REQUESTS_PER_RUN` | 單次執行 API 硬上限，預設 400；到達後停止新增請求 |
 | `DISCORD_WEBHOOK_URL` | 你的 Discord Webhook URL |
 | `DISCORD_REPORT_WEBHOOK_URL` | 選填；圖片日報額外發送頻道的 Discord Webhook URL |
 | `GOOGLE_SHEET_ID` | 你的 Google Sheet ID |
@@ -415,7 +417,7 @@ uv run python main.py
 ### 評分公式
 
 ```
-綜合分 = 基本面 × 30% + 技術面 × 30% + 回測勝率 × 40%
+綜合分 = 基本面 × 25% + 技術面 × 25% + 當前籌碼 × 20% + 技術回測 × 15% + 籌碼回測 × 15%
 ```
 
 | 綜合分 | 動作 | 條件 |
@@ -512,12 +514,12 @@ if pd.notna(row.get("rsi")) and 30 < row["rsi"] < 70:
 ```python
 # stock_strategies/evaluate.py 裡的綜合分公式
 signal_score = round(
-    0.3 * fund_score +   # 基本面 30%
-    0.3 * tech_score +   # 技術面 30%
-    0.4 * bt_score,      # 回測 40%（目前權重最高）
+    0.25 * fund_score + 0.25 * tech_score +
+    0.20 * chip_score + 0.15 * technical_backtest_score +
+    0.15 * chip_backtest_score,
     1
 )
-# 想更重視技術面？改成 0.2 / 0.5 / 0.3
+# 權重可在 strategies/*.json 調整；系統會自動正規化。
 ```
 
 **週期股策略**

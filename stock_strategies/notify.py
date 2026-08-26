@@ -78,6 +78,7 @@ def _format_stock_detail(s: dict, show_trend: bool = True) -> list[str]:
     t = s.get("trend", {})
     lines = []
     wr = f"{c['backtest_winrate']*100:.0f}%" if c.get("backtest_winrate") else "N/A"
+    chip_wr = f"{c['chip_backtest_winrate']*100:.0f}%" if c.get("chip_backtest_winrate") is not None else "N/A"
     fund = "✅" if c.get("fundamental_pass") else "❌"
 
     lines.append(f"*{s['stock_id']} {s['name']}*  綜合 {s['signal_score']} 分")
@@ -100,8 +101,13 @@ def _format_stock_detail(s: dict, show_trend: bool = True) -> list[str]:
     lines.append(
         f"基本面{fund} | 技術分 {c.get('tech_score', 'N/A')} | 勝率 {wr} ({c.get('backtest_samples', 0)}次)"
     )
+    lines.append(
+        f"籌碼分 {c.get('chip_score', 'N/A')} | 籌碼回測 {chip_wr} ({c.get('chip_backtest_samples', 0)}次)"
+    )
     if c.get("tech_signals"):
         lines.append(f"觸發: {', '.join(c['tech_signals'])}")
+    if c.get("chip_signals"):
+        lines.append(f"籌碼觸發: {', '.join(c['chip_signals'][:3])}")
     risk_notes = [
         note
         for note in s.get("risk_notes", [])
@@ -232,8 +238,8 @@ def format_messages(
 
     msg1.append("📋 *策略規則*")
     msg1.append(
-        "基本面(EPS>5,ROE>15) + 技術面(均線/布林/KD/MACD) + 3年回測\n"
-        f"綜合 = 基本面30% + 技術30% + 回測40%\n"
+        "基本面 + 技術面 + 外資投信籌碼 + 技術/籌碼3年回測\n"
+        f"綜合 = 基本25% + 技術25% + 當前籌碼20% + 技術回測15% + 籌碼回測15%\n"
         f"BUY≥65(三關全過) | WATCH≥50\n"
         f"停損{CONFIG['stop_loss']*100:.0f}% / 停利{CONFIG['target_return']*100:.0f}% / 持有{CONFIG['hold_days']}日"
     )
@@ -250,7 +256,7 @@ def format_messages(
             msg2.append("")
     else:
         msg2.append("🟢 *今日預計強勢股：今日無符合全部條件的標的*")
-        msg2.append("（需基本面+技術面+回測三關全過）")
+        msg2.append("（綜合基本面、技術面、籌碼面與雙回測）")
         msg2.append("")
 
     if watches:

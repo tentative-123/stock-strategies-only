@@ -32,11 +32,43 @@ def _market_tone(signals: list[dict]) -> tuple[str, str]:
     return "negative", "盤勢偏空，耐心等待止跌訊號"
 
 
+def _market_breadth(signals: list[dict]) -> tuple[int, int, int, int]:
+    """統計觀察池當日上漲、站上月線與創 20 日新高的檔數。"""
+    valid = [signal for signal in signals if signal.get("trend")]
+    total = len(valid)
+    rising = sum(1 for signal in valid if signal["trend"].get("chg_1d", 0) > 0)
+    above_ma20 = sum(1 for signal in valid if signal["trend"].get("above_ma20"))
+    new_high_20 = sum(1 for signal in valid if signal["trend"].get("new_high_20"))
+    return rising, above_ma20, new_high_20, total
+
+
+def _compact_chip_signals(components: dict) -> str:
+    """將籌碼觸發縮成卡片專用短句，保留占量數字但避免擠掉回測。"""
+    replacements = (
+        ("外資5日買超占量", "外5"),
+        ("投信5日買超占量", "投5"),
+        ("外資近5日淨買", "外淨買"),
+        ("投信近5日淨買", "投淨買"),
+        ("外資投信同步買超", "外投同步買"),
+        ("法人籌碼中性", "籌碼中性"),
+    )
+    compact = []
+    for signal in components.get("chip_signals", []):
+        text = str(signal)
+        for original, short in replacements:
+            text = text.replace(original, short)
+        compact.append(text.replace("占量 ", " "))
+    return "｜".join(compact[:2]) or "籌碼中性"
+
+
 def _stock_card(stock: dict, kind: str) -> str:
     components = stock.get("components", {})
     trend = stock.get("trend", {})
     winrate = components.get("backtest_winrate")
     winrate_text = f"{winrate * 100:.0f}%" if winrate is not None else "N/A"
+    chip_winrate = components.get("chip_backtest_winrate")
+    chip_wr_text = f"{chip_winrate * 100:.0f}%" if chip_winrate is not None else "N/A"
+    chip_text = _compact_chip_signals(components)
     signals = "、".join(components.get("tech_signals", [])) or "尚無明確技術觸發"
     deep_parts = []
     if components.get("tech_signals"):
@@ -72,10 +104,12 @@ def _stock_card(stock: dict, kind: str) -> str:
           <span>20日 <b>{trend.get('chg_20d', 0):+.1f}%</b></span>
           <span>技術 <b>{_escape(components.get('tech_score', 'N/A'))}</b></span>
           <span>勝率 <b>{winrate_text}</b></span>
+          <span>籌碼 <b>{_escape(components.get('chip_score', 'N/A'))}</b></span>
           <span>風報比 <b>1:{_escape(stock.get('risk_reward_ratio', 'N/A'))}</b></span>
         </div>
         <div class="trigger">觸發：{_escape(signals)}</div>
         <div class="analysis"><b>深度分析</b><span>{_escape(deep_analysis)}</span></div>
+        <div class="analysis chip-reading"><b>籌碼</b><span>{_escape(chip_text)}｜回測 {chip_wr_text}·{components.get('chip_backtest_samples', 0)}次</span></div>
         <div class="analysis volume-reading"><b>量價解讀</b><span>{_escape(pattern_text)}｜{_escape(volume_verdict)}</span></div>
         {note_html}
       </article>"""
@@ -179,6 +213,7 @@ def build_report_html(
     watches = [s for s in signals if s.get("action") == "WATCH"][:3]
     skips = [s for s in signals if s.get("action") in ("SKIP", "ERROR")]
     tone, guidance = _market_tone(signals)
+    rising, above_ma20, new_high_20, breadth_total = _market_breadth(signals)
     conclusion = (
         f"今日聚焦 {len(buys)} 檔強勢候選"
         if buys
@@ -202,25 +237,26 @@ h1{{font-size:42px;line-height:1.1;margin:0;color:#10213a}}.date{{font-size:22px
 .hero{{display:flex;justify-content:space-between;align-items:center;padding:24px 28px;border-radius:22px;background:#fff;border-left:9px solid #335cff;box-shadow:0 10px 30px #263b5b12;margin-bottom:20px}}
 .hero h2{{font-size:30px;margin:0 0 7px}}.hero p{{margin:0;font-size:18px;color:#5d6b80}}.counts{{display:flex;gap:9px}}
 .pill{{padding:10px 14px;border-radius:13px;font-size:17px;font-weight:800}}.pill.buy{{background:#dcfce7;color:#087443}}.pill.watch{{background:#fff4cc;color:#8a5a00}}.pill.skip{{background:#eef1f5;color:#64748b}}
-.overview{{display:grid;grid-template-columns:1fr 1fr 0.9fr;gap:14px;margin-bottom:22px}}.info{{background:#fff;padding:18px 20px;border-radius:17px;border:1px solid #e4eaf2;min-height:112px}}
+.overview{{display:grid;grid-template-columns:1fr 1fr 0.9fr;gap:14px;margin-bottom:22px}}.info{{background:#fff;padding:18px 20px;border-radius:17px;border:1px solid #e4eaf2;min-height:112px}}.info.breadth{{padding:12px 20px}}.info.breadth label{{margin-bottom:4px}}.breadth-lines{{display:grid;gap:2px}}.breadth-lines b{{display:flex;justify-content:space-between;gap:10px;font-size:15px!important;line-height:1.18!important}}.breadth-lines strong{{color:#25364f}}
 .info label,.section-title span{{display:block;font-size:15px;font-weight:800;color:#718096;letter-spacing:1px;margin-bottom:8px}}.info b{{font-size:19px;line-height:1.45}}.info.{tone} b{{color:{'#087443' if tone == 'positive' else '#b45309' if tone == 'watch' else '#c0392b' if tone == 'negative' else '#334155'}}}
 .content{{display:grid;grid-template-columns:1fr 1fr;gap:18px}}.panel{{height:650px;overflow:hidden;background:#fff;border:1px solid #e4eaf2;border-radius:20px;padding:20px;box-shadow:0 8px 24px #263b5b0b}}
 .section-title{{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}}.section-title h3{{font-size:23px;margin:0}}.section-title span{{margin:0}}
 .stock-card{{border:1px solid #e5eaf1;border-radius:14px;padding:12px 14px;margin-top:9px;background:#fbfcfe}}.stock-card.buy{{border-left:6px solid #17a667}}.stock-card.watch{{border-left:6px solid #e7a91b}}
 .stock-head{{display:flex;justify-content:space-between;align-items:center}}.stock-head div b{{font-size:21px;margin-right:9px}}.stock-head div span{{font-size:18px;font-weight:700;color:#435169}}.stock-head>strong{{font-size:24px;color:#335cff}}.stock-head small{{font-size:13px;margin-left:2px}}
-.metrics{{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 6px}}.metrics span{{background:#eef3f8;border-radius:8px;padding:4px 6px;font-size:12px;color:#5d6b80}}.metrics b{{color:#25364f}}.trigger{{font-size:13px;color:#3c4e67;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.analysis{{display:grid;grid-template-columns:58px 1fr;gap:6px;margin-top:6px;padding-top:6px;border-top:1px dashed #e1e7ef;font-size:12px;line-height:1.35;color:#53637a}}.analysis b{{color:#25364f}}.analysis span{{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}.volume-reading b{{color:#9a6700}}.stock-note{{font-size:12px;color:#b45309;margin-top:5px}}
+.metrics{{display:flex;gap:4px;flex-wrap:nowrap;margin:8px 0 6px}}.metrics span{{background:#eef3f8;border-radius:8px;padding:4px 5px;font-size:11px;color:#5d6b80}}.metrics b{{color:#25364f}}.trigger{{font-size:13px;color:#3c4e67;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.analysis{{display:grid;grid-template-columns:58px 1fr;gap:6px;margin-top:5px;padding-top:5px;border-top:1px dashed #e1e7ef;font-size:11px;line-height:1.28;color:#53637a}}.analysis b{{color:#25364f}}.analysis span{{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}}.chip-reading b{{color:#16775b}}.volume-reading b{{color:#9a6700}}.stock-note{{font-size:11px;color:#b45309;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .panel.count-4 .stock-card{{padding:8px 11px;margin-top:6px}}.panel.count-4 .stock-head div b{{font-size:18px}}.panel.count-4 .stock-head div span{{font-size:15px}}.panel.count-4 .stock-head>strong{{font-size:20px}}.panel.count-4 .metrics{{flex-wrap:nowrap;gap:3px;margin:5px 0}}.panel.count-4 .metrics span{{font-size:10px;padding:3px}}.panel.count-4 .trigger{{font-size:11px}}.panel.count-4 .analysis{{grid-template-columns:50px 1fr;margin-top:4px;padding-top:4px;font-size:10px}}.panel.count-4 .analysis span{{-webkit-line-clamp:1}}
 .panel.count-5{{padding:17px 18px}}.panel.count-5 .section-title{{margin-bottom:5px}}.panel.count-5 .stock-card{{padding:5px 8px;margin-top:4px}}.panel.count-5 .stock-head div b{{font-size:16px;margin-right:6px}}.panel.count-5 .stock-head div span{{font-size:13px}}.panel.count-5 .stock-head>strong{{font-size:18px}}.panel.count-5 .stock-head small{{font-size:9px}}.panel.count-5 .metrics{{flex-wrap:nowrap;gap:2px;margin:3px 0}}.panel.count-5 .metrics span{{font-size:8px;padding:2px 3px}}.panel.count-5 .trigger{{font-size:9px}}.panel.count-5 .analysis{{grid-template-columns:40px 1fr;gap:3px;margin-top:2px;padding-top:2px;font-size:8px;line-height:1.15}}.panel.count-5 .analysis span{{-webkit-line-clamp:1}}.panel.count-5 .stock-note{{font-size:8px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.watch-panel.count-3{{padding:18px}}.watch-panel.count-3 .section-title{{margin-bottom:6px}}.watch-panel.count-3 .stock-card{{padding:9px 11px;margin-top:7px}}.watch-panel.count-3 .stock-head div b{{font-size:18px}}.watch-panel.count-3 .stock-head div span{{font-size:15px}}.watch-panel.count-3 .stock-head>strong{{font-size:21px}}.watch-panel.count-3 .metrics{{gap:2px;margin:5px 0 4px}}.watch-panel.count-3 .metrics span{{font-size:9px;padding:3px}}.watch-panel.count-3 .trigger{{font-size:11px}}.watch-panel.count-3 .analysis{{grid-template-columns:46px 1fr;gap:4px;margin-top:3px;padding-top:3px;font-size:9px;line-height:1.15}}.watch-panel.count-3 .stock-note{{font-size:9px;margin-top:2px}}
 .empty-line{{padding:18px;border-radius:13px;background:#f6f8fb;color:#7a8798;font-size:16px;text-align:center}}
 .footer{{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:18px;padding:0 4px;color:#778397;font-size:12px}}.attribution{{font-size:10px;text-align:right;color:#7c899b;white-space:nowrap}}.attribution a{{color:#536a88;text-decoration:underline;font-weight:700}}
 .chart-panel{{background:#fff;border:1px solid #e4eaf2;border-radius:20px;padding:18px 22px 12px;margin-bottom:22px;box-shadow:0 8px 24px #263b5b0b}}.chart-head{{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}}.chart-head h3{{font-size:23px;margin:0}}.legend{{display:flex;gap:14px;color:#65748a;font-size:13px;font-weight:700}}.legend i{{width:16px;height:3px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:middle}}.chart-panel svg{{display:block;width:100%;height:520px}}.grid{{stroke:#e8edf4;stroke-width:1}}.axis{{font-size:11px;fill:#8190a5}}.wick{{stroke-width:1.4}}.candle.rise,.volume.rise{{fill:#e45151}}.wick.rise{{stroke:#e45151}}.candle.fall,.volume.fall{{fill:#15966a}}.wick.fall{{stroke:#15966a}}.volume{{opacity:.42}}.chart-empty{{height:370px;display:flex;align-items:center;justify-content:center;color:#8290a3;background:#f7f9fc;border-radius:14px}}
 </style></head><body><main class="page">
   <header class="header"><div><div class="eyebrow">TAIWAN STOCK SIGNAL</div><h1>0050追蹤選股日報</h1></div><div class="header-meta"><div class="community">股市艾斯DC台股頻道</div><div class="date">{report_date:%Y / %m / %d}</div></div></header>
   <section class="hero"><div><h2>{conclusion}</h2><p>{_escape(guidance)}</p></div><div class="counts"><span class="pill buy">BUY {len([s for s in signals if s.get('action') == 'BUY'])}</span><span class="pill watch">WATCH {len([s for s in signals if s.get('action') == 'WATCH'])}</span><span class="pill skip">SKIP {len(skips)}</span></div></section>
-  <section class="overview"><div class="info {tone}"><label>大盤判讀</label><b>{_escape((market or {}).get('note') or guidance)}</b></div><div class="info"><label>夜盤訊號</label><b>{_escape(night_note or '暫無夜盤資料')}</b></div><div class="info"><label>掃描範圍</label><b>{len(signals)} 檔股票<br>{len(watchlist)} 檔觀察池</b></div></section>
+  <section class="overview"><div class="info {tone}"><label>大盤判讀</label><b>{_escape((market or {}).get('note') or guidance)}</b></div><div class="info"><label>夜盤訊號</label><b>{_escape(night_note or '暫無夜盤資料')}</b></div><div class="info breadth"><label>市場廣度</label><div class="breadth-lines"><b><span>上漲</span><strong>{rising} / {breadth_total}</strong></b><b><span>站上月線</span><strong>{above_ma20} / {breadth_total}</strong></b><b><span>創 20 日新高</span><strong>{new_high_20} / {breadth_total}</strong></b></div></div></section>
   <section class="chart-panel"><div class="chart-head"><h3>加權指數｜日 K 趨勢</h3><div class="legend"><span><i style="background:#8b5cf6"></i>MA5</span><span><i style="background:#2f6fed"></i>MA10</span><span><i style="background:#e49b0f"></i>MA20</span><span><i style="background:#64748b"></i>MA60</span><span>成交量</span></div></div>{_index_chart((market or {}).get('history', []))}</section>
   <section class="content"><div><div class="panel count-{len(buys)}"><div class="section-title"><h3>🟢 今日預計強勢股</h3><span>TOP 5</span></div>{buy_cards}</div></div>
-  <div><div class="panel count-{len(watches)}"><div class="section-title"><h3>🟡 今日可關注股</h3><span>TOP 3</span></div>{watch_cards}</div></div></section>
+  <div><div class="panel watch-panel count-{len(watches)}"><div class="section-title"><h3>🟡 今日可關注股</h3><span>TOP 3</span></div>{watch_cards}</div></div></section>
   <footer class="footer"><span>系統自動分析，僅供參考，投資決策請自行判斷</span><span class="attribution">本報告修改自 <a href="https://github.com/kevin801221/stock-strategies-only">kevin801221/stock-strategies-only</a> 專案，感謝分享</span></footer>
 </main></body></html>"""
 
