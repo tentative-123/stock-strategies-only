@@ -23,11 +23,31 @@ jobs:
       - name: Install deps
         run: uv sync
 
+      - name: Prepare FinMind cache key
+        id: cache-key
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore FinMind API cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/finmind
+          key: finmind-v3-${{ runner.os }}-${{ steps.cache-key.outputs.week }}
+          restore-keys: finmind-v3-${{ runner.os }}-
+
+      - name: Setup Chrome for report image
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install Traditional Chinese fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+
       - name: Run signal engine
         env:
+          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FINMIND_MAX_REQUESTS_PER_RUN: "400"
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_REPORT_WEBHOOK_URL: ${{ secrets.DISCORD_REPORT_WEBHOOK_URL }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDS_JSON }}
         run: uv run python main.py

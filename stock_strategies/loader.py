@@ -40,9 +40,12 @@ _PARAM_DEFAULTS: dict = {
     "target_return": CONFIG["target_return"],
     "stop_loss": CONFIG["stop_loss"],
     # 評分加權
-    "weight_fundamental": 0.3,
-    "weight_technical": 0.3,
-    "weight_backtest": 0.4,
+    "weight_fundamental": 0.25,
+    "weight_technical": 0.25,
+    "weight_chips": 0.20,
+    "weight_backtest": 0.15,
+    "weight_chip_backtest": 0.15,
+    "min_chip_score_for_signal": 60,
     "min_total_score_for_buy": CONFIG["min_total_score_for_buy"],
     "min_tech_score_for_buy": 50,
     # 技術訊號開關
@@ -93,11 +96,13 @@ def merge_params(strategy: Optional[dict]) -> dict:
         merged["weight_fundamental"]
         + merged["weight_technical"]
         + merged["weight_backtest"]
+        + merged["weight_chips"]
+        + merged["weight_chip_backtest"]
     )
     if total <= 0:
-        merged["weight_fundamental"] = 0.3
-        merged["weight_technical"] = 0.3
-        merged["weight_backtest"] = 0.4
+        merged.update(weight_fundamental=.25, weight_technical=.25,
+                      weight_chips=.20, weight_backtest=.15,
+                      weight_chip_backtest=.15)
     return merged
 
 
@@ -140,6 +145,7 @@ def validate_strategy(data: dict) -> dict:
     clean_params["min_total_score_for_buy"] = max(0, min(100, clean_params["min_total_score_for_buy"]))
     clean_params["min_tech_score_for_buy"] = max(0, min(100, clean_params["min_tech_score_for_buy"]))
     clean_params["min_tech_score_for_signal"] = max(0, min(100, clean_params["min_tech_score_for_signal"]))
+    clean_params["min_chip_score_for_signal"] = max(0, min(100, clean_params["min_chip_score_for_signal"]))
     clean_params["backtest_years"] = max(1, min(10, clean_params["backtest_years"]))
     clean_params["hold_days"] = max(1, min(120, clean_params["hold_days"]))
 

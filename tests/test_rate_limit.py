@@ -43,3 +43,21 @@ def test_rate_limit_exhausts_raises(monkeypatch):
     monkeypatch.setattr(cache.time, "sleep", lambda s: None)
     with pytest.raises(cache.FinMindRateLimitError):
         cache._rate_limited_get({"dataset": "X"}, timeout=5, max_retries=2)
+
+
+def test_per_run_budget_stops_before_http_request(monkeypatch):
+    cache.reset_request_stats()
+    monkeypatch.setattr(cache, "FINMIND_MAX_REQUESTS_PER_RUN", 1)
+    calls = {"n": 0}
+
+    def fake_get(url, params=None, timeout=None):
+        calls["n"] += 1
+        return _FakeResp()
+
+    monkeypatch.setattr(cache.requests, "get", fake_get)
+    monkeypatch.setattr(cache.time, "sleep", lambda s: None)
+    cache._rate_limited_get({"dataset": "X"}, timeout=5, max_retries=0)
+    with pytest.raises(cache.FinMindRateLimitError, match="防護上限"):
+        cache._rate_limited_get({"dataset": "Y"}, timeout=5, max_retries=0)
+    assert calls["n"] == 1
+    cache.reset_request_stats()

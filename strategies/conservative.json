@@ -13,13 +13,16 @@
     "backtest_years": 3,
     "hold_days": 15,
     "min_tech_score_for_signal": 65,
+    "min_chip_score_for_signal": 65,
 
     "target_return": 0.08,
     "stop_loss": 0.05,
 
-    "weight_fundamental": 0.4,
+    "weight_fundamental": 0.25,
     "weight_technical": 0.25,
-    "weight_backtest": 0.35,
+    "weight_chips": 0.20,
+    "weight_backtest": 0.15,
+    "weight_chip_backtest": 0.15,
     "min_total_score_for_buy": 75,
     "min_tech_score_for_buy": 55,
 

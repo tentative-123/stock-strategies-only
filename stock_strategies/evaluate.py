@@ -9,6 +9,8 @@ from .indicators import add_indicators, tech_score_at
 from .backtest import backtest
 from .volume import detect_patterns, verdict as volume_verdict
 from .loader import merge_params
+from .datasources import get_institutional
+from .chips import build_chip_scores, chip_signals, backtest_chips, adjusted_winrate
 
 
 def evaluate(stock_id: str, name: str, strategy: dict | None = None) -> Optional[dict]:
@@ -44,6 +46,15 @@ def evaluate(stock_id: str, name: str, strategy: dict | None = None) -> Optional
         latest = px.iloc[-1]
         ts = tech_score_at(latest, params)
         bt = backtest(px, params)
+        # 三大法人 dataset 一次整批取得；評分與逐日回測皆重用同一份資料。
+        institutional = get_institutional(
+            stock_id, px["date"].min().strftime("%Y-%m-%d"),
+            as_of=px["date"].max().strftime("%Y-%m-%d"),
+        )
+        chip_history = build_chip_scores(px, institutional)
+        chip_latest = chip_history.iloc[-1]
+        chip_score = float(chip_latest["chip_score"])
+        chip_bt = backtest_chips(px, chip_history, params)
 
         if params["use_volume_patterns"]:
             vp = detect_patterns(px)
@@ -52,18 +63,23 @@ def evaluate(stock_id: str, name: str, strategy: dict | None = None) -> Optional
 
         fund_score = 100 if fund_pass else 40
         tech_score = max(0, min(100, ts["score"] + vp["bonus"]))
-        winrate = bt.get("winrate") or 0.5
-        bt_score = winrate * 100
+        winrate = bt.get("winrate")
+        bt_adjusted = adjusted_winrate(winrate, bt.get("samples", 0))
+        chip_winrate = chip_bt.get("winrate")
+        chip_bt_adjusted = adjusted_winrate(chip_winrate, chip_bt.get("samples", 0))
 
         wf = params["weight_fundamental"]
         wt = params["weight_technical"]
         wb = params["weight_backtest"]
+        wc = params["weight_chips"]
+        wcb = params["weight_chip_backtest"]
         # 正規化權重
-        wsum = wf + wt + wb
+        wsum = wf + wt + wc + wb + wcb
         if wsum > 0:
-            wf, wt, wb = wf / wsum, wt / wsum, wb / wsum
+            wf, wt, wc, wb, wcb = (v / wsum for v in (wf, wt, wc, wb, wcb))
 
-        signal_score = round(wf * fund_score + wt * tech_score + wb * bt_score, 1)
+        signal_score = round(wf * fund_score + wt * tech_score + wc * chip_score
+                             + wb * bt_adjusted * 100 + wcb * chip_bt_adjusted * 100, 1)
 
         fund_gate = (not params["fundamental_pass_required"]) or fund_pass
         if (
@@ -89,15 +105,18 @@ def evaluate(stock_id: str, name: str, strategy: dict | None = None) -> Optional
 
         if bt.get("samples", 0) < 8:
             result["risk_notes"].append(f"回測樣本僅 {bt.get('samples', 0)} 次，統計弱")
+        if chip_bt.get("samples", 0) < 8:
+            result["risk_notes"].append(f"籌碼回測樣本僅 {chip_bt.get('samples', 0)} 次，統計弱")
         if not fund_pass:
             result["risk_notes"].append("基本面未過門檻")
-        if winrate < 0.5:
+        if winrate is not None and winrate < 0.5:
             result["risk_notes"].append(f"歷史勝率 {winrate*100:.0f}% 低於五成")
         if pd.notna(latest.get("bb_upper")) and latest["close"] > latest["bb_upper"]:
             result["risk_notes"].append("已突破布林上軌，追高風險")
         if "放量滯漲" in vp["patterns"]:
             result["risk_notes"].append("偵測到放量滯漲，高檔爆量疑似出貨")
 
+        chg_1d = (latest["close"] / px.iloc[-2]["close"] - 1) * 100 if len(px) >= 2 else 0
         chg_5d = (latest["close"] / px.iloc[-6]["close"] - 1) * 100 if len(px) >= 6 else 0
         chg_20d = (latest["close"] / px.iloc[-21]["close"] - 1) * 100 if len(px) >= 21 else 0
         vol_5 = px["volume"].iloc[-5:].mean()
@@ -108,6 +127,8 @@ def evaluate(stock_id: str, name: str, strategy: dict | None = None) -> Optional
         pct_from_high = (latest["close"] / high_252 - 1) * 100
         above_ma20 = latest["close"] > latest["ma20"] if pd.notna(latest["ma20"]) else False
         above_ma60 = latest["close"] > latest["ma60"] if pd.notna(latest["ma60"]) else False
+        prior_20_high = px["high"].iloc[-21:-1].max() if len(px) >= 21 else px["high"].iloc[:-1].max()
+        new_high_20 = bool(pd.notna(prior_20_high) and latest["high"] >= prior_20_high)
 
         result.update({
             "action": action,
@@ -120,18 +141,28 @@ def evaluate(stock_id: str, name: str, strategy: dict | None = None) -> Optional
                 "tech_signals": ts["signals"],
                 "backtest_winrate": winrate,
                 "backtest_samples": bt.get("samples", 0),
+                "backtest_adjusted_winrate": bt_adjusted,
+                "chip_score": chip_score,
+                "chip_signals": chip_signals(chip_latest),
+                "foreign_ratio_5d": float(chip_latest["foreign_ratio_5d"] or 0),
+                "trust_ratio_5d": float(chip_latest["trust_ratio_5d"] or 0),
+                "chip_backtest_winrate": chip_winrate,
+                "chip_backtest_adjusted_winrate": chip_bt_adjusted,
+                "chip_backtest_samples": chip_bt.get("samples", 0),
                 "volume_patterns": vp["patterns"],
                 "volume_details": vp["details"],
                 "volume_bonus": vp["bonus"],
                 "volume_verdict": volume_verdict(vp["patterns"]),
             },
             "trend": {
+                "chg_1d": round(chg_1d, 2),
                 "chg_5d": round(chg_5d, 2),
                 "chg_20d": round(chg_20d, 2),
                 "vol_ratio": round(vol_ratio, 2),
                 "pct_from_high": round(pct_from_high, 1),
                 "above_ma20": bool(above_ma20),
                 "above_ma60": bool(above_ma60),
+                "new_high_20": new_high_20,
             },
             "entry_price": entry,
             "stop_loss_price": stop_price,
