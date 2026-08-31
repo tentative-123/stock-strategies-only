@@ -1,0 +1,322 @@
+"""Generate the one-page daily report as HTML and render it with headless Chrome."""
+
+from __future__ import annotations
+
+import html
+import os
+import shutil
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
+REPORT_WIDTH = 1080
+REPORT_HEIGHT = 1800
+REPORT_SCALE = 2
+
+
+def _escape(value: object) -> str:
+    return html.escape(str(value or ""))
+
+
+def _market_tone(signals: list[dict]) -> tuple[str, str]:
+    valid = [s for s in signals if s.get("trend")]
+    if not valid:
+        return "neutral", "市場資料不足，今日以個股訊號為主"
+    up = sum(1 for s in valid if s["trend"].get("chg_5d", 0) > 0)
+    above = sum(1 for s in valid if s["trend"].get("above_ma20"))
+    if up / len(valid) > 0.7 and above / len(valid) > 0.6:
+        return "positive", "盤勢偏多，可留意強勢股延續"
+    if up / len(valid) > 0.5:
+        return "watch", "盤勢中性偏多，選股不追高"
+    if up / len(valid) > 0.3:
+        return "watch", "盤勢中性偏空，控制整體部位"
+    return "negative", "盤勢偏空，耐心等待止跌訊號"
+
+
+def _market_breadth(signals: list[dict]) -> tuple[int, int, int, int]:
+    """統計觀察池當日上漲、站上月線與創 20 日新高的檔數。"""
+    valid = [signal for signal in signals if signal.get("trend")]
+    total = len(valid)
+    rising = sum(1 for signal in valid if signal["trend"].get("chg_1d", 0) > 0)
+    above_ma20 = sum(1 for signal in valid if signal["trend"].get("above_ma20"))
+    new_high_20 = sum(1 for signal in valid if signal["trend"].get("new_high_20"))
+    return rising, above_ma20, new_high_20, total
+
+
+def _compact_chip_signals(components: dict) -> str:
+    """將籌碼觸發縮成卡片專用短句，保留占量數字但避免擠掉回測。"""
+    replacements = (
+        ("外資5日買超占量", "外5"),
+        ("投信5日買超占量", "投5"),
+        ("外資近5日淨買", "外淨買"),
+        ("投信近5日淨買", "投淨買"),
+        ("外資投信同步買超", "外投同步買"),
+        ("法人籌碼中性", "籌碼中性"),
+    )
+    compact = []
+    for signal in components.get("chip_signals", []):
+        text = str(signal)
+        for original, short in replacements:
+            text = text.replace(original, short)
+        compact.append(text.replace("占量 ", " "))
+    return "｜".join(compact[:2]) or "籌碼中性"
+
+
+def _stock_card(stock: dict, kind: str, compact: bool = False) -> str:
+    components = stock.get("components", {})
+    trend = stock.get("trend", {})
+    winrate = components.get("backtest_winrate")
+    winrate_text = f"{winrate * 100:.0f}%" if winrate is not None else "N/A"
+    chip_winrate = components.get("chip_backtest_winrate")
+    chip_wr_text = f"{chip_winrate * 100:.0f}%" if chip_winrate is not None else "N/A"
+    chip_text = _compact_chip_signals(components)
+    signals = "、".join(components.get("tech_signals", [])) or "尚無明確技術觸發"
+    deep_parts = []
+    if components.get("tech_signals"):
+        deep_parts.append("技術面出現" + "、".join(components["tech_signals"]))
+    if trend.get("chg_5d", 0) > 0 and trend.get("vol_ratio", 1) > 1.2:
+        deep_parts.append("帶量上攻")
+    if trend.get("above_ma20") and trend.get("above_ma60"):
+        deep_parts.append("站上月季線")
+    if winrate is not None and winrate >= 0.6:
+        deep_parts.append(f"回測勝率 {winrate_text}")
+    deep_analysis = "，".join(deep_parts) or "綜合分數領先，等待量價確認"
+    patterns = components.get("volume_patterns", [])
+    pattern_text = "＋".join(patterns) if patterns else "無特殊型態"
+    volume_verdict = components.get("volume_verdict") or "量能平淡，等待表態"
+    notes = [
+        note
+        for note in stock.get("risk_notes", [])
+        if not (note.startswith("歷史勝率") and "低於五成" in note)
+    ]
+    note_html = (
+        f'<div class="stock-note">⚠ {_escape(" · ".join(notes[:2]))}</div>'
+        if notes
+        else ""
+    )
+    if compact:
+        compact_tech = "、".join(components.get("tech_signals", [])[:2]) or "等待技術表態"
+        return f"""
+      <article class="stock-card {kind} compact">
+        <div class="stock-head">
+          <div><b>{_escape(stock.get('stock_id'))}</b><span>{_escape(stock.get('name'))}</span></div>
+          <strong>{_escape(stock.get('signal_score'))}<small>分</small></strong>
+        </div>
+        <div class="metrics compact-metrics">
+          <span>5日 <b>{trend.get('chg_5d', 0):+.1f}%</b></span>
+          <span>技術 <b>{_escape(components.get('tech_score', 'N/A'))}</b></span>
+          <span>勝率 <b>{winrate_text}</b></span>
+          <span>籌碼 <b>{_escape(components.get('chip_score', 'N/A'))}</b></span>
+        </div>
+        <div class="compact-summary">技術：{_escape(compact_tech)}｜籌碼：{_escape(chip_text)}｜籌回 {chip_wr_text}</div>
+      </article>"""
+    return f"""
+      <article class="stock-card {kind}">
+        <div class="stock-head">
+          <div><b>{_escape(stock.get('stock_id'))}</b><span>{_escape(stock.get('name'))}</span></div>
+          <strong>{_escape(stock.get('signal_score'))}<small>分</small></strong>
+        </div>
+        <div class="metrics">
+          <span>5日 <b>{trend.get('chg_5d', 0):+.1f}%</b></span>
+          <span>20日 <b>{trend.get('chg_20d', 0):+.1f}%</b></span>
+          <span>技術 <b>{_escape(components.get('tech_score', 'N/A'))}</b></span>
+          <span>勝率 <b>{winrate_text}</b></span>
+          <span>籌碼 <b>{_escape(components.get('chip_score', 'N/A'))}</b></span>
+          <span>風報比 <b>1:{_escape(stock.get('risk_reward_ratio', 'N/A'))}</b></span>
+        </div>
+        <div class="trigger">觸發：{_escape(signals)}</div>
+        <div class="analysis"><b>深度分析</b><span>{_escape(deep_analysis)}</span></div>
+        <div class="analysis chip-reading"><b>籌碼</b><span>{_escape(chip_text)}｜回測 {chip_wr_text}·{components.get('chip_backtest_samples', 0)}次</span></div>
+        <div class="analysis volume-reading"><b>量價解讀</b><span>{_escape(pattern_text)}｜{_escape(volume_verdict)}</span></div>
+        {note_html}
+      </article>"""
+
+
+def _index_chart(history: list[dict]) -> str:
+    """將近 60 日加權指數資料畫成無 JavaScript 的 SVG K 線圖。"""
+    rows = [
+        row
+        for row in history[-60:]
+        if all(row.get(key) is not None for key in ("open", "high", "low", "close"))
+    ]
+    if len(rows) < 2:
+        return '<div class="chart-empty">加權指數 K 線資料不足</div>'
+
+    width, height = 918, 520
+    left, right, top = 58, 18, 12
+    price_bottom, volume_top, volume_bottom = 355, 400, 490
+    plot_width = width - left - right
+    values = [float(row[key]) for row in rows for key in ("high", "low")]
+    for row in rows:
+        values.extend(
+            float(row[key])
+            for key in ("ma5", "ma10", "ma20", "ma60")
+            if row.get(key) is not None
+        )
+    price_min, price_max = min(values), max(values)
+    padding = max((price_max - price_min) * 0.06, 1)
+    price_min -= padding
+    price_max += padding
+    max_volume = max(float(row.get("volume") or 0) for row in rows) or 1
+    step = plot_width / len(rows)
+
+    def x_at(index: int) -> float:
+        return left + step * (index + 0.5)
+
+    def y_at(value: float) -> float:
+        ratio = (float(value) - price_min) / (price_max - price_min)
+        return price_bottom - ratio * (price_bottom - top)
+
+    parts = [f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="加權指數日 K 線圖">']
+    for index in range(4):
+        y = top + (price_bottom - top) * index / 3
+        price = price_max - (price_max - price_min) * index / 3
+        parts.append(
+            f'<line x1="{left}" y1="{y:.1f}" x2="{width-right}" y2="{y:.1f}" class="grid"/>'
+            f'<text x="{left-8}" y="{y+4:.1f}" text-anchor="end" class="axis">{price:,.0f}</text>'
+        )
+    parts.append(
+        f'<line x1="{left}" y1="{volume_bottom}" x2="{width-right}" y2="{volume_bottom}" class="grid"/>'
+    )
+
+    candle_width = max(3.0, min(8.0, step * 0.58))
+    for index, row in enumerate(rows):
+        x = x_at(index)
+        open_price, close = float(row["open"]), float(row["close"])
+        high, low = float(row["high"]), float(row["low"])
+        css_class = "rise" if close >= open_price else "fall"
+        body_top = min(y_at(open_price), y_at(close))
+        body_height = max(abs(y_at(open_price) - y_at(close)), 1.5)
+        volume_height = float(row.get("volume") or 0) / max_volume * (volume_bottom - volume_top)
+        parts.append(
+            f'<line x1="{x:.1f}" y1="{y_at(high):.1f}" x2="{x:.1f}" y2="{y_at(low):.1f}" class="wick {css_class}"/>'
+            f'<rect x="{x-candle_width/2:.1f}" y="{body_top:.1f}" width="{candle_width:.1f}" height="{body_height:.1f}" class="candle {css_class}"/>'
+            f'<rect x="{x-candle_width/2:.1f}" y="{volume_bottom-volume_height:.1f}" width="{candle_width:.1f}" height="{volume_height:.1f}" class="volume {css_class}"/>'
+        )
+
+    ma_colors = {5: "#8b5cf6", 10: "#2f6fed", 20: "#e49b0f", 60: "#64748b"}
+    for period, color in ma_colors.items():
+        points = [
+            f"{x_at(index):.1f},{y_at(row[f'ma{period}']):.1f}"
+            for index, row in enumerate(rows)
+            if row.get(f"ma{period}") is not None
+        ]
+        if len(points) > 1:
+            parts.append(
+                f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>'
+            )
+
+    tick_indexes = sorted({0, len(rows) // 3, len(rows) * 2 // 3, len(rows) - 1})
+    for index in tick_indexes:
+        date = str(rows[index].get("date", ""))[5:].replace("-", "/")
+        parts.append(
+            f'<text x="{x_at(index):.1f}" y="{height-5}" text-anchor="middle" class="axis">{_escape(date)}</text>'
+        )
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def build_report_html(
+    signals: list[dict],
+    watchlist: list[dict] | None = None,
+    market: dict | None = None,
+    night_note: str | None = None,
+    report_date: datetime | None = None,
+) -> str:
+    """Build a fixed-size, one-page HTML report without changing signal decisions."""
+    report_date = report_date or datetime.now()
+    watchlist = watchlist or []
+    buys = [s for s in signals if s.get("action") == "BUY"][:5]
+    watches = [s for s in signals if s.get("action") == "WATCH"][:3]
+    skips = [s for s in signals if s.get("action") in ("SKIP", "ERROR")]
+    tone, guidance = _market_tone(signals)
+    rising, above_ma20, new_high_20, breadth_total = _market_breadth(signals)
+    conclusion = (
+        f"今日聚焦 {len(buys)} 檔強勢候選"
+        if buys
+        else "今日無強勢候選，耐心觀察"
+    )
+    buy_cards = "".join(
+        _stock_card(stock, "buy", compact=index >= 3)
+        for index, stock in enumerate(buys)
+    )
+    watch_cards = "".join(_stock_card(s, "watch") for s in watches)
+    if not buy_cards:
+        buy_cards = '<div class="empty-line">無符合全部條件的標的</div>'
+    if not watch_cards:
+        watch_cards = '<div class="empty-line">今日無額外關注標的</div>'
+
+    return f"""<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><style>
+*{{box-sizing:border-box}}html,body{{margin:0;width:{REPORT_WIDTH}px;height:{REPORT_HEIGHT}px}}
+body{{font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;background:#eef2f7;color:#182234}}
+.page{{width:100%;height:100%;padding:54px 58px;background:#f7f9fc;overflow:hidden}}
+.header{{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px}}.header-meta{{text-align:right}}.community{{font-size:17px;font-weight:900;color:#e45d37;margin-bottom:7px;letter-spacing:.5px}}
+.eyebrow{{color:#59708f;font-weight:800;font-size:18px;letter-spacing:3px;margin-bottom:8px}}
+h1{{font-size:42px;line-height:1.1;margin:0;color:#10213a}}.date{{font-size:22px;font-weight:700;color:#64748b}}
+.hero{{display:flex;justify-content:space-between;align-items:center;padding:24px 28px;border-radius:22px;background:#fff;border-left:9px solid #335cff;box-shadow:0 10px 30px #263b5b12;margin-bottom:20px}}
+.hero h2{{font-size:30px;margin:0 0 7px}}.hero p{{margin:0;font-size:18px;color:#5d6b80}}.counts{{display:flex;gap:9px}}
+.pill{{padding:10px 14px;border-radius:13px;font-size:17px;font-weight:800}}.pill.buy{{background:#dcfce7;color:#087443}}.pill.watch{{background:#fff4cc;color:#8a5a00}}.pill.skip{{background:#eef1f5;color:#64748b}}
+.overview{{display:grid;grid-template-columns:1fr 1fr 0.9fr;gap:14px;margin-bottom:22px}}.info{{background:#fff;padding:18px 20px;border-radius:17px;border:1px solid #e4eaf2;min-height:112px}}.info.breadth{{padding:12px 20px}}.info.breadth label{{margin-bottom:4px}}.breadth-lines{{display:grid;gap:2px}}.breadth-lines b{{display:flex;justify-content:space-between;gap:10px;font-size:15px!important;line-height:1.18!important}}.breadth-lines strong{{color:#25364f}}
+.info label,.section-title span{{display:block;font-size:15px;font-weight:800;color:#718096;letter-spacing:1px;margin-bottom:8px}}.info b{{font-size:19px;line-height:1.45}}.info.{tone} b{{color:{'#087443' if tone == 'positive' else '#b45309' if tone == 'watch' else '#c0392b' if tone == 'negative' else '#334155'}}}
+.content{{display:grid;grid-template-columns:1fr 1fr;gap:18px}}.panel{{height:650px;overflow:hidden;background:#fff;border:1px solid #e4eaf2;border-radius:20px;padding:20px;box-shadow:0 8px 24px #263b5b0b}}
+.section-title{{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}}.section-title h3{{font-size:23px;margin:0}}.section-title span{{margin:0}}
+.stock-card{{border:1px solid #e5eaf1;border-radius:14px;padding:12px 14px;margin-top:9px;background:#fbfcfe}}.stock-card.buy{{border-left:6px solid #17a667}}.stock-card.watch{{border-left:6px solid #e7a91b}}
+.stock-head{{display:flex;justify-content:space-between;align-items:center}}.stock-head div b{{font-size:21px;margin-right:9px}}.stock-head div span{{font-size:18px;font-weight:700;color:#435169}}.stock-head>strong{{font-size:24px;color:#335cff}}.stock-head small{{font-size:13px;margin-left:2px}}
+.metrics{{display:flex;gap:4px;flex-wrap:nowrap;margin:8px 0 6px}}.metrics span{{background:#eef3f8;border-radius:8px;padding:4px 5px;font-size:11px;color:#5d6b80}}.metrics b{{color:#25364f}}.trigger{{font-size:13px;color:#3c4e67;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.analysis{{display:grid;grid-template-columns:58px 1fr;gap:6px;margin-top:5px;padding-top:5px;border-top:1px dashed #e1e7ef;font-size:11px;line-height:1.28;color:#53637a}}.analysis b{{color:#25364f}}.analysis span{{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}}.chip-reading b{{color:#16775b}}.volume-reading b{{color:#9a6700}}.stock-note{{font-size:11px;color:#b45309;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.panel.count-4 .stock-card{{padding:8px 11px;margin-top:6px}}.panel.count-4 .stock-head div b{{font-size:18px}}.panel.count-4 .stock-head div span{{font-size:15px}}.panel.count-4 .stock-head>strong{{font-size:20px}}.panel.count-4 .metrics{{flex-wrap:nowrap;gap:3px;margin:5px 0}}.panel.count-4 .metrics span{{font-size:10px;padding:3px}}.panel.count-4 .trigger{{font-size:11px}}.panel.count-4 .analysis{{grid-template-columns:50px 1fr;margin-top:4px;padding-top:4px;font-size:10px}}.panel.count-4 .analysis span{{-webkit-line-clamp:1}}
+.panel.count-5{{padding:17px 18px}}.panel.count-5 .section-title{{margin-bottom:5px}}.panel.count-5 .stock-card{{padding:5px 8px;margin-top:4px}}.panel.count-5 .stock-head div b{{font-size:16px;margin-right:6px}}.panel.count-5 .stock-head div span{{font-size:13px}}.panel.count-5 .stock-head>strong{{font-size:18px}}.panel.count-5 .stock-head small{{font-size:9px}}.panel.count-5 .metrics{{flex-wrap:nowrap;gap:2px;margin:3px 0}}.panel.count-5 .metrics span{{font-size:8px;padding:2px 3px}}.panel.count-5 .trigger{{font-size:9px}}.panel.count-5 .analysis{{grid-template-columns:40px 1fr;gap:3px;margin-top:2px;padding-top:2px;font-size:8px;line-height:1.15}}.panel.count-5 .analysis span{{-webkit-line-clamp:1}}.panel.count-5 .stock-note{{font-size:8px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.panel.count-5 .stock-card.compact{{padding:6px 8px;margin-top:5px}}.panel.count-5 .compact-metrics{{margin:3px 0 2px}}.compact-summary{{color:#53637a;font-size:8px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px dashed #e1e7ef;padding-top:3px}}
+.watch-panel.count-3{{padding:18px}}.watch-panel.count-3 .section-title{{margin-bottom:6px}}.watch-panel.count-3 .stock-card{{padding:9px 11px;margin-top:7px}}.watch-panel.count-3 .stock-head div b{{font-size:18px}}.watch-panel.count-3 .stock-head div span{{font-size:15px}}.watch-panel.count-3 .stock-head>strong{{font-size:21px}}.watch-panel.count-3 .metrics{{gap:2px;margin:5px 0 4px}}.watch-panel.count-3 .metrics span{{font-size:9px;padding:3px}}.watch-panel.count-3 .trigger{{font-size:11px}}.watch-panel.count-3 .analysis{{grid-template-columns:46px 1fr;gap:4px;margin-top:3px;padding-top:3px;font-size:9px;line-height:1.15}}.watch-panel.count-3 .stock-note{{font-size:9px;margin-top:2px}}
+.empty-line{{padding:18px;border-radius:13px;background:#f6f8fb;color:#7a8798;font-size:16px;text-align:center}}
+.footer{{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:18px;padding:0 4px;color:#778397;font-size:12px}}.attribution{{font-size:10px;text-align:right;color:#7c899b;white-space:nowrap}}.attribution a{{color:#536a88;text-decoration:underline;font-weight:700}}
+.chart-panel{{background:#fff;border:1px solid #e4eaf2;border-radius:20px;padding:18px 22px 12px;margin-bottom:22px;box-shadow:0 8px 24px #263b5b0b}}.chart-head{{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}}.chart-head h3{{font-size:23px;margin:0}}.legend{{display:flex;gap:14px;color:#65748a;font-size:13px;font-weight:700}}.legend i{{width:16px;height:3px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:middle}}.chart-panel svg{{display:block;width:100%;height:520px}}.grid{{stroke:#e8edf4;stroke-width:1}}.axis{{font-size:11px;fill:#8190a5}}.wick{{stroke-width:1.4}}.candle.rise,.volume.rise{{fill:#e45151}}.wick.rise{{stroke:#e45151}}.candle.fall,.volume.fall{{fill:#15966a}}.wick.fall{{stroke:#15966a}}.volume{{opacity:.42}}.chart-empty{{height:370px;display:flex;align-items:center;justify-content:center;color:#8290a3;background:#f7f9fc;border-radius:14px}}
+</style></head><body><main class="page">
+  <header class="header"><div><div class="eyebrow">TAIWAN STOCK SIGNAL</div><h1>0050追蹤選股日報</h1></div><div class="header-meta"><div class="community">股市艾斯DC台股頻道</div><div class="date">{report_date:%Y / %m / %d}</div></div></header>
+  <section class="hero"><div><h2>{conclusion}</h2><p>{_escape(guidance)}</p></div><div class="counts"><span class="pill buy">BUY {len([s for s in signals if s.get('action') == 'BUY'])}</span><span class="pill watch">WATCH {len([s for s in signals if s.get('action') == 'WATCH'])}</span><span class="pill skip">SKIP {len(skips)}</span></div></section>
+  <section class="overview"><div class="info {tone}"><label>大盤判讀</label><b>{_escape((market or {}).get('note') or guidance)}</b></div><div class="info"><label>夜盤訊號</label><b>{_escape(night_note or '暫無夜盤資料')}</b></div><div class="info breadth"><label>市場廣度</label><div class="breadth-lines"><b><span>上漲</span><strong>{rising} / {breadth_total}</strong></b><b><span>站上月線</span><strong>{above_ma20} / {breadth_total}</strong></b><b><span>創 20 日新高</span><strong>{new_high_20} / {breadth_total}</strong></b></div></div></section>
+  <section class="chart-panel"><div class="chart-head"><h3>加權指數｜日 K 趨勢</h3><div class="legend"><span><i style="background:#8b5cf6"></i>MA5</span><span><i style="background:#2f6fed"></i>MA10</span><span><i style="background:#e49b0f"></i>MA20</span><span><i style="background:#64748b"></i>MA60</span><span>成交量</span></div></div>{_index_chart((market or {}).get('history', []))}</section>
+  <section class="content"><div><div class="panel count-{len(buys)}"><div class="section-title"><h3>🟢 今日預計強勢股</h3><span>TOP 5</span></div>{buy_cards}</div></div>
+  <div><div class="panel watch-panel count-{len(watches)}"><div class="section-title"><h3>🟡 今日可關注股</h3><span>TOP 3</span></div>{watch_cards}</div></div></section>
+  <footer class="footer"><span>系統自動分析，僅供參考，投資決策請自行判斷</span><span class="attribution">本報告修改自 <a href="https://github.com/kevin801221/stock-strategies-only">kevin801221/stock-strategies-only</a> 專案，感謝分享</span></footer>
+</main></body></html>"""
+
+
+def render_report_png(html_text: str, output_path: str | Path) -> Path:
+    """Render report HTML to PNG with Chrome available on the host runner."""
+    output = Path(output_path).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    html_path = output.with_suffix(".html")
+    html_path.write_text(html_text, encoding="utf-8")
+    chrome = os.environ.get("CHROME_BIN") or next(
+        (
+            found
+            for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
+            if (found := shutil.which(name))
+        ),
+        None,
+    )
+    if not chrome:
+        raise RuntimeError("找不到 Chrome，無法產生每日報告圖")
+    try:
+        subprocess.run(
+            [
+                chrome,
+                "--headless=new",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                f"--force-device-scale-factor={REPORT_SCALE}",
+                f"--window-size={REPORT_WIDTH},{REPORT_HEIGHT}",
+                f"--screenshot={output}",
+                html_path.as_uri(),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=45,
+        )
+    finally:
+        html_path.unlink(missing_ok=True)
+    if not output.exists():
+        raise RuntimeError("Chrome 未產生報告圖")
+    return output
