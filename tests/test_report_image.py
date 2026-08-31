@@ -81,6 +81,9 @@ def test_build_report_html_has_stable_sections_and_limits():
     assert "class=\"volume rise\"" in report
     assert "grid-template-columns:1fr 1fr" in report
     assert 'class="panel count-5"' in report
+    assert report.count('class="stock-card buy compact"') == 2
+    assert 'class="stock-card buy compact"' in report
+    assert "compact-summary" in report
     assert 'class="panel watch-panel count-3"' in report
     assert ".panel.count-5 .stock-card" in report
     assert "height:520px" in report
@@ -121,3 +124,5 @@ def test_render_report_png_invokes_headless_chrome(tmp_path, monkeypatch, mocker
     assert output.read_bytes() == b"png"
     assert not output.with_suffix(".html").exists()
     assert "--headless=new" in run.call_args.args[0]
+    assert "--force-device-scale-factor=2" in run.call_args.args[0]
+    assert "--window-size=1080,1800" in run.call_args.args[0]

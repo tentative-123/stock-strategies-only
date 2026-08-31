@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPORT_WIDTH = 1080
 REPORT_HEIGHT = 1800
+REPORT_SCALE = 2
 
 
 def _escape(value: object) -> str:
@@ -61,7 +62,7 @@ def _compact_chip_signals(components: dict) -> str:
     return "｜".join(compact[:2]) or "籌碼中性"
 
 
-def _stock_card(stock: dict, kind: str) -> str:
+def _stock_card(stock: dict, kind: str, compact: bool = False) -> str:
     components = stock.get("components", {})
     trend = stock.get("trend", {})
     winrate = components.get("backtest_winrate")
@@ -93,6 +94,22 @@ def _stock_card(stock: dict, kind: str) -> str:
         if notes
         else ""
     )
+    if compact:
+        compact_tech = "、".join(components.get("tech_signals", [])[:2]) or "等待技術表態"
+        return f"""
+      <article class="stock-card {kind} compact">
+        <div class="stock-head">
+          <div><b>{_escape(stock.get('stock_id'))}</b><span>{_escape(stock.get('name'))}</span></div>
+          <strong>{_escape(stock.get('signal_score'))}<small>分</small></strong>
+        </div>
+        <div class="metrics compact-metrics">
+          <span>5日 <b>{trend.get('chg_5d', 0):+.1f}%</b></span>
+          <span>技術 <b>{_escape(components.get('tech_score', 'N/A'))}</b></span>
+          <span>勝率 <b>{winrate_text}</b></span>
+          <span>籌碼 <b>{_escape(components.get('chip_score', 'N/A'))}</b></span>
+        </div>
+        <div class="compact-summary">技術：{_escape(compact_tech)}｜籌碼：{_escape(chip_text)}｜籌回 {chip_wr_text}</div>
+      </article>"""
     return f"""
       <article class="stock-card {kind}">
         <div class="stock-head">
@@ -219,7 +236,10 @@ def build_report_html(
         if buys
         else "今日無強勢候選，耐心觀察"
     )
-    buy_cards = "".join(_stock_card(s, "buy") for s in buys)
+    buy_cards = "".join(
+        _stock_card(stock, "buy", compact=index >= 3)
+        for index, stock in enumerate(buys)
+    )
     watch_cards = "".join(_stock_card(s, "watch") for s in watches)
     if not buy_cards:
         buy_cards = '<div class="empty-line">無符合全部條件的標的</div>'
@@ -246,6 +266,7 @@ h1{{font-size:42px;line-height:1.1;margin:0;color:#10213a}}.date{{font-size:22px
 .metrics{{display:flex;gap:4px;flex-wrap:nowrap;margin:8px 0 6px}}.metrics span{{background:#eef3f8;border-radius:8px;padding:4px 5px;font-size:11px;color:#5d6b80}}.metrics b{{color:#25364f}}.trigger{{font-size:13px;color:#3c4e67;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.analysis{{display:grid;grid-template-columns:58px 1fr;gap:6px;margin-top:5px;padding-top:5px;border-top:1px dashed #e1e7ef;font-size:11px;line-height:1.28;color:#53637a}}.analysis b{{color:#25364f}}.analysis span{{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}}.chip-reading b{{color:#16775b}}.volume-reading b{{color:#9a6700}}.stock-note{{font-size:11px;color:#b45309;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .panel.count-4 .stock-card{{padding:8px 11px;margin-top:6px}}.panel.count-4 .stock-head div b{{font-size:18px}}.panel.count-4 .stock-head div span{{font-size:15px}}.panel.count-4 .stock-head>strong{{font-size:20px}}.panel.count-4 .metrics{{flex-wrap:nowrap;gap:3px;margin:5px 0}}.panel.count-4 .metrics span{{font-size:10px;padding:3px}}.panel.count-4 .trigger{{font-size:11px}}.panel.count-4 .analysis{{grid-template-columns:50px 1fr;margin-top:4px;padding-top:4px;font-size:10px}}.panel.count-4 .analysis span{{-webkit-line-clamp:1}}
 .panel.count-5{{padding:17px 18px}}.panel.count-5 .section-title{{margin-bottom:5px}}.panel.count-5 .stock-card{{padding:5px 8px;margin-top:4px}}.panel.count-5 .stock-head div b{{font-size:16px;margin-right:6px}}.panel.count-5 .stock-head div span{{font-size:13px}}.panel.count-5 .stock-head>strong{{font-size:18px}}.panel.count-5 .stock-head small{{font-size:9px}}.panel.count-5 .metrics{{flex-wrap:nowrap;gap:2px;margin:3px 0}}.panel.count-5 .metrics span{{font-size:8px;padding:2px 3px}}.panel.count-5 .trigger{{font-size:9px}}.panel.count-5 .analysis{{grid-template-columns:40px 1fr;gap:3px;margin-top:2px;padding-top:2px;font-size:8px;line-height:1.15}}.panel.count-5 .analysis span{{-webkit-line-clamp:1}}.panel.count-5 .stock-note{{font-size:8px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.panel.count-5 .stock-card.compact{{padding:6px 8px;margin-top:5px}}.panel.count-5 .compact-metrics{{margin:3px 0 2px}}.compact-summary{{color:#53637a;font-size:8px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px dashed #e1e7ef;padding-top:3px}}
 .watch-panel.count-3{{padding:18px}}.watch-panel.count-3 .section-title{{margin-bottom:6px}}.watch-panel.count-3 .stock-card{{padding:9px 11px;margin-top:7px}}.watch-panel.count-3 .stock-head div b{{font-size:18px}}.watch-panel.count-3 .stock-head div span{{font-size:15px}}.watch-panel.count-3 .stock-head>strong{{font-size:21px}}.watch-panel.count-3 .metrics{{gap:2px;margin:5px 0 4px}}.watch-panel.count-3 .metrics span{{font-size:9px;padding:3px}}.watch-panel.count-3 .trigger{{font-size:11px}}.watch-panel.count-3 .analysis{{grid-template-columns:46px 1fr;gap:4px;margin-top:3px;padding-top:3px;font-size:9px;line-height:1.15}}.watch-panel.count-3 .stock-note{{font-size:9px;margin-top:2px}}
 .empty-line{{padding:18px;border-radius:13px;background:#f6f8fb;color:#7a8798;font-size:16px;text-align:center}}
 .footer{{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:18px;padding:0 4px;color:#778397;font-size:12px}}.attribution{{font-size:10px;text-align:right;color:#7c899b;white-space:nowrap}}.attribution a{{color:#536a88;text-decoration:underline;font-weight:700}}
@@ -285,6 +306,7 @@ def render_report_png(html_text: str, output_path: str | Path) -> Path:
                 "--no-sandbox",
                 "--disable-gpu",
                 "--hide-scrollbars",
+                f"--force-device-scale-factor={REPORT_SCALE}",
                 f"--window-size={REPORT_WIDTH},{REPORT_HEIGHT}",
                 f"--screenshot={output}",
                 html_path.as_uri(),
